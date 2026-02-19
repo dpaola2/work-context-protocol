@@ -6,7 +6,7 @@ A standard way for AI agents to read and write project/task context, regardless 
 
 You organize work into **namespaces** — each namespace is a project or area of focus. Inside each namespace, work items are **markdown files** with YAML frontmatter for structured fields, a free-form body for description, and an append-only activity log. Every item gets a **callsign** like `PIPE-12` — a short, unique identifier that agents and humans use to reference it.
 
-AI agents interact with WCP through 6 MCP tools. They can list what needs doing, pick up a task, update its status as they work, and leave comments about what they did. Humans can do the same — either through the agent, or by opening the markdown files directly in any editor (including Obsidian).
+AI agents interact with WCP through 8 MCP tools. They can list what needs doing, pick up a task, update its status as they work, leave comments about what they did, and attach documents like PRDs and architecture proposals. Humans can do the same — either through the agent, or by opening the markdown files directly in any editor (including Obsidian).
 
 ### Concepts
 
@@ -15,92 +15,85 @@ AI agents interact with WCP through 6 MCP tools. They can list what needs doing,
 | **Namespace** | A project or area of focus. Each one is a directory. | `PIPE` (Pipeline Skills), `SN` (Show Notes) |
 | **Work item** | A task, feature, bug, or spike. One markdown file. | `PIPE/PIPE-12.md` |
 | **Callsign** | A unique ID: `{NAMESPACE}-{NUMBER}`. Auto-generated. | `PIPE-12`, `SN-3`, `OS-7` |
-| **Status** | Where the item is in its lifecycle. | `backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled` |
+| **Status** | Semantic label for where the item is. No enforced transitions. | `backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled` |
 | **Activity log** | Append-only history at the bottom of each item. | Comments from agents and humans with timestamps |
+| **Artifact** | A document attached to a work item. Stored in a companion directory. | `WCP-1/prd.md`, `WCP-1/architecture-proposal.md` |
 
 ### What a work item looks like
 
 ```markdown
 ---
-id: PIPE-12
-title: Add WCP MCP server
+id: WCP-1
+title: Build WCP MVP
 status: in_progress
 priority: high
 type: feature
-project: MVP
+project: wcp-mvp
 assignee: dave
-parent: PIPE-1
 created: 2026-02-19
 updated: 2026-02-19
 artifacts:
   - type: prd
     title: WCP PRD
-    url: projects/pipe-12/prd.md
-  - type: pr
-    title: "feat: WCP MCP server"
-    url: https://github.com/dpaola2/wcp/pull/3
+    url: WCP/WCP-1/prd.md
+  - type: architecture
+    title: Architecture Proposal
+    url: WCP/WCP-1/architecture-proposal.md
 ---
 
 Build the MCP server that exposes WCP tools for reading and writing work items.
 
 ## Acceptance Criteria
 
-- [ ] `wcp_list` returns filtered items
-- [ ] `wcp_get` returns full item detail
-- [ ] `wcp_update` changes status and fields
-- [ ] `wcp_comment` appends to activity log
+- [x] 8 MCP tools functional
+- [x] Filesystem adapter with markdown storage
+- [ ] At least one real project tracked for 1 week
 
 ---
 
 ## Activity
 
 **dave** — 2026-02-19T10:30:00-05:00
-Started sketching the schema. Going with filesystem + markdown approach.
+Started sketching the schema.
 
-**pipeline-discovery** — 2026-02-19T14:00:00-05:00
-Discovery complete. Found 3 existing patterns in the codebase.
-Architecture doc drafted and linked above.
-
-**dave** — 2026-02-19T16:00:00-05:00
-Reviewed architecture. Approved. Moving to implementation.
+**claude** — 2026-02-19T10:57:00-05:00
+All 8 tools built. 41/41 tests passing.
 ```
 
-The frontmatter is structured data. The body is whatever you want. The activity log is a running record of what happened.
+### Artifact storage
 
-### Typical agent workflow
+Artifacts are stored in a **companion directory** next to the work item. `WCP-1.md` gets a `WCP-1/` directory:
 
 ```
-1. Agent reads:    wcp_get PIPE-12
-                   → full item with description, criteria, history
-
-2. Agent starts:   wcp_update PIPE-12 status=in_progress
-
-3. Agent reports:  wcp_comment PIPE-12 "Discovery complete. 3 existing
-                   patterns found. Architecture doc drafted."
-
-4. Agent links:    wcp_update PIPE-12 addArtifacts=[{type: "prd",
-                   title: "Architecture", url: "..."}]
-
-5. Agent finishes: wcp_update PIPE-12 status=in_review
+WCP/
+├── WCP-1.md                         ← work item
+└── WCP-1/                           ← artifacts
+    ├── prd.md
+    ├── architecture-proposal.md
+    ├── gameplan.md
+    └── ADR-001-adapter-pattern.md
 ```
+
+Use `wcp_attach` to store artifacts and `wcp_get_artifact` to retrieve them. Artifacts are registered in the work item's frontmatter automatically.
 
 ### Data directory structure
 
-All work items live in a **data directory** — a plain git repo. Each namespace is a directory. Each work item is a file. The callsign is the filename.
+All data lives in a **data directory** — a plain git repo, also a valid Obsidian vault.
 
 ```
-wcp-data/                          ← git repo
+wcp-data/
 ├── .wcp/
 │   └── config.yaml                ← namespace definitions + counters
+├── WCP/
+│   ├── WCP-1.md
+│   └── WCP-1/
+│       ├── prd.md
+│       └── gameplan.md
 ├── PIPE/
 │   ├── PIPE-1.md
-│   ├── PIPE-2.md
-│   └── PIPE-3.md
-├── SN/
-│   ├── SN-1.md
-│   └── SN-2.md
-└── OS/
-    └── OS-1.md
+│   └── PIPE-2.md
+└── SN/
+    └── SN-1.md
 ```
 
 The config file defines your namespaces:
@@ -108,29 +101,21 @@ The config file defines your namespaces:
 ```yaml
 # .wcp/config.yaml
 namespaces:
+  WCP:
+    name: Work Context Protocol
+    description: WCP development
+    next: 2
   PIPE:
     name: Pipeline Skills
     description: Agent pipeline framework development
-    next: 4
-  SN:
-    name: Show Notes
-    description: AI podcast summarizer
     next: 3
-  OS:
-    name: Operating System
-    description: Personal OS tooling and improvements
-    next: 2
 ```
 
 The `next` counter tracks the next available number. WCP increments it on create.
 
-This directory is also a valid Obsidian vault — browse your work items with backlinks, search, and all the Obsidian features. It's also grep-able: `rg "status: todo" PIPE/` shows all your todos.
-
-Git gives you version history, audit trail, branching, and diffing for free. Push to GitHub for backup.
-
 ## MCP tools
 
-WCP exposes 6 tools via the Model Context Protocol:
+WCP exposes 8 tools via the Model Context Protocol:
 
 | Tool | Action | Key parameters |
 |------|--------|---------------|
@@ -140,6 +125,10 @@ WCP exposes 6 tools via the Model Context Protocol:
 | `wcp_create` | Create new work item | `namespace`, `title` (required), `status`, `priority`, `type`, `body`, ... |
 | `wcp_update` | Update fields | `id` (required), `status`, `title`, `body`, `addArtifacts`, ... |
 | `wcp_comment` | Append to activity log | `id`, `author`, `body` (all required) |
+| `wcp_attach` | Store an artifact file | `id`, `type`, `title`, `filename`, `content` (all required) |
+| `wcp_get_artifact` | Retrieve an artifact | `id`, `filename` (both required) |
+
+The server includes instructions that are sent to agents during the MCP handshake, so they understand how to use the tools without additional prompting.
 
 ## Install
 
@@ -152,9 +141,13 @@ npm run build
 
 ## Configure
 
-WCP is an MCP server. You configure it in the `.mcp.json` of whatever project will use it. The server reads one environment variable: `WCP_DATA_PATH` — the path to the data directory.
+### Global (all Claude Code sessions)
 
-### Single context
+```bash
+claude mcp add wcp --scope user -e WCP_DATA_PATH=/path/to/wcp-data -- node /path/to/wcp/dist/index.js
+```
+
+### Per-project
 
 Add to your project's `.mcp.json`:
 
@@ -163,43 +156,14 @@ Add to your project's `.mcp.json`:
   "mcpServers": {
     "wcp": {
       "command": "node",
-      "args": ["/Users/you/projects/wcp/dist/index.js"],
+      "args": ["/path/to/wcp/dist/index.js"],
       "env": {
-        "WCP_DATA_PATH": "/Users/you/projects/wcp-data"
+        "WCP_DATA_PATH": "/path/to/wcp-data"
       }
     }
   }
 }
 ```
-
-### Multiple contexts
-
-The same WCP binary can serve different data directories. Add multiple entries to `.mcp.json`, each with its own `WCP_DATA_PATH`:
-
-```json
-{
-  "mcpServers": {
-    "wcp_personal": {
-      "command": "node",
-      "args": ["/Users/you/projects/wcp/dist/index.js"],
-      "env": {
-        "WCP_DATA_PATH": "/Users/you/projects/personal-wcp-data"
-      }
-    },
-    "wcp_work": {
-      "command": "node",
-      "args": ["/Users/you/projects/wcp/dist/index.js"],
-      "env": {
-        "WCP_DATA_PATH": "/Users/you/work/wcp-data"
-      }
-    }
-  }
-}
-```
-
-Each entry spawns its own server process. Claude Code prefixes tool names with the server name, so you get `wcp_personal_list` and `wcp_work_list` as separate tools.
-
-This configuration lives in your project, not in WCP. WCP itself is stateless — it reads `WCP_DATA_PATH` from the environment and operates against that directory. Nothing is hardcoded.
 
 ## Set up a data directory
 
@@ -219,24 +183,35 @@ namespaces:
     next: 1
 ```
 
-Use whatever namespace keys make sense for your work. Keys should be short uppercase strings — they become directory names and callsign prefixes.
+Or use the seed script to create a starter directory:
+
+```bash
+WCP_DATA_PATH=~/projects/wcp-data npm run seed
+```
 
 ## Architecture
 
 WCP separates protocol from storage via an adapter pattern:
 
-- **Protocol** (`src/adapter.ts`) — the `WcpAdapter` interface defining the 6 operations and their types. This is the spec.
-- **Filesystem adapter** (`src/adapters/filesystem.ts`) — implements `WcpAdapter` by reading/writing markdown files with YAML frontmatter.
-- **MCP server** (`src/index.ts`) — registers the 6 tools, wires them to the adapter, handles errors.
+```
+MCP Server (index.ts)
+  └── Tool Handlers (8 tools)
+        └── WcpAdapter (interface)
+              └── FilesystemAdapter (MVP)
+              └── LinearAdapter (future)
+              └── JiraAdapter (future)
+```
 
-Future adapters (Linear, GitHub Issues, Jira) would implement the same `WcpAdapter` interface against different backends, without changing any tool signatures.
+- **Protocol** (`src/adapter.ts`) — the `WcpAdapter` interface defining 8 operations and their types
+- **Filesystem adapter** (`src/adapters/filesystem.ts`) — reads/writes markdown + YAML frontmatter
+- **MCP server** (`src/index.ts`) — registers tools, wires them to the adapter, handles errors
 
-See `architecture-proposal.md` and `decisions/ADR-001-adapter-pattern.md` for the full design rationale.
+Future adapters implement the same `WcpAdapter` interface against different backends without changing any tool signatures.
 
 ## Design principles
 
 1. **Evolve from working systems.** Build the tool. Use it. Extract the protocol from what works.
-2. **Keep it simple.** 6 tools. Markdown files. YAML frontmatter. That's it.
+2. **Keep it simple.** 8 tools. Markdown files. YAML frontmatter. That's it.
 3. **Bidirectional.** Agents read context AND write back — status, comments, artifacts.
 4. **Markdown is the data format.** Human-readable, grep-able, Obsidian-compatible, git-trackable.
 5. **No business logic.** Pure data layer. No automations, triggers, or enforced transitions.
