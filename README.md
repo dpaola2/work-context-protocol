@@ -6,7 +6,7 @@ A standard way for AI agents to read and write project/task context, regardless 
 
 You organize work into **namespaces** — each namespace is a project or area of focus. Inside each namespace, work items are **markdown files** with YAML frontmatter for structured fields, a free-form body for description, and an append-only activity log. Every item gets a **callsign** like `PIPE-12` — a short, unique identifier that agents and humans use to reference it.
 
-AI agents interact with WCP through 8 MCP tools. They can list what needs doing, pick up a task, update its status as they work, leave comments about what they did, and attach documents like PRDs and architecture proposals. Humans can do the same — either through the agent, or by opening the markdown files directly in any editor (including Obsidian).
+AI agents interact with WCP through 11 MCP tools. They can list what needs doing, pick up a task, update its status as they work, leave comments about what they did, and attach documents like PRDs and architecture proposals. Humans can do the same — either through the agent, or by opening the markdown files directly in any editor (including Obsidian).
 
 ### Concepts
 
@@ -45,7 +45,7 @@ Build the MCP server that exposes WCP tools for reading and writing work items.
 
 ## Acceptance Criteria
 
-- [x] 8 MCP tools functional
+- [x] 11 MCP tools functional
 - [x] Filesystem adapter with markdown storage
 - [ ] At least one real project tracked for 1 week
 
@@ -57,7 +57,7 @@ Build the MCP server that exposes WCP tools for reading and writing work items.
 Started sketching the schema.
 
 **claude** — 2026-02-19T10:57:00-05:00
-All 8 tools built. 41/41 tests passing.
+All 11 tools built. 41/41 tests passing.
 ```
 
 ### Artifact storage
@@ -100,6 +100,12 @@ The config file defines your namespaces:
 
 ```yaml
 # .wcp/config.yaml
+schema:
+  status: [backlog, todo, in_progress, in_review, done, cancelled]
+  priority: [urgent, high, medium, low]
+  type: [feature, bug, chore, spike]
+  artifact_type: [prd, discovery, architecture, adr, gameplan, plan, test-matrix, review, qa-plan]
+
 namespaces:
   WCP:
     name: Work Context Protocol
@@ -109,13 +115,18 @@ namespaces:
     name: Pipeline Skills
     description: Agent pipeline framework development
     next: 3
+    schema:
+      statuses: [blocked]
+      artifact_types: [runbook]
 ```
 
-The `next` counter tracks the next available number. WCP increments it on create.
+The `schema` block defines global defaults for field values. The `status` and `artifact_type` fields are **extensible** — namespaces can add their own values via per-namespace `schema` blocks (see `PIPE` above). The `priority` and `type` fields are fixed. If the top-level `schema` key is omitted, built-in defaults are used.
+
+The `next` counter tracks the next available number. WCP increments it on create. Use `wcp_schema` to discover valid values at runtime.
 
 ## MCP tools
 
-WCP exposes 8 tools via the Model Context Protocol:
+WCP exposes 11 tools via the Model Context Protocol:
 
 | Tool | Action | Key parameters |
 |------|--------|---------------|
@@ -127,6 +138,9 @@ WCP exposes 8 tools via the Model Context Protocol:
 | `wcp_comment` | Append to activity log | `id`, `author`, `body` (all required) |
 | `wcp_attach` | Store an artifact file | `id`, `type`, `title`, `filename`, `content` (all required) |
 | `wcp_get_artifact` | Retrieve an artifact | `id`, `filename` (both required) |
+| `wcp_create_namespace` | Create a new namespace | `key`, `name`, `description` (all required) |
+| `wcp_schema` | Discover valid field values | `namespace` (optional) |
+| `wcp_schema_update` | Extend statuses/artifact types | `namespace` (required), `add_statuses`, `remove_statuses`, `add_artifact_types`, `remove_artifact_types` |
 
 The server includes instructions that are sent to agents during the MCP handshake, so they understand how to use the tools without additional prompting.
 
@@ -183,7 +197,9 @@ namespaces:
     next: 1
 ```
 
-Or use the seed script to create a starter directory:
+Or use `wcp_create_namespace` to add namespaces without manually editing config.yaml — the tool creates the namespace entry and sets up the counter automatically.
+
+You can also use the seed script to create a starter directory:
 
 ```bash
 WCP_DATA_PATH=~/projects/wcp-data npm run seed
@@ -195,14 +211,14 @@ WCP separates protocol from storage via an adapter pattern:
 
 ```
 MCP Server (index.ts)
-  └── Tool Handlers (8 tools)
+  └── Tool Handlers (11 tools)
         └── WcpAdapter (interface)
               └── FilesystemAdapter (MVP)
               └── LinearAdapter (future)
               └── JiraAdapter (future)
 ```
 
-- **Protocol** (`src/adapter.ts`) — the `WcpAdapter` interface defining 8 operations and their types
+- **Protocol** (`src/adapter.ts`) — the `WcpAdapter` interface defining 11 operations and their types
 - **Filesystem adapter** (`src/adapters/filesystem.ts`) — reads/writes markdown + YAML frontmatter
 - **MCP server** (`src/index.ts`) — registers tools, wires them to the adapter, handles errors
 
@@ -211,7 +227,7 @@ Future adapters implement the same `WcpAdapter` interface against different back
 ## Design principles
 
 1. **Evolve from working systems.** Build the tool. Use it. Extract the protocol from what works.
-2. **Keep it simple.** 8 tools. Markdown files. YAML frontmatter. That's it.
+2. **Keep it simple.** 11 tools. Markdown files. YAML frontmatter. That's it.
 3. **Bidirectional.** Agents read context AND write back — status, comments, artifacts.
 4. **Markdown is the data format.** Human-readable, grep-able, Obsidian-compatible, git-trackable.
 5. **No business logic.** Pure data layer. No automations, triggers, or enforced transitions.
