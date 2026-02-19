@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import yaml from "js-yaml";
-import type { WcpConfig } from "./config.js";
+import { DEFAULT_SCHEMA, type WcpConfig } from "./config.js";
 import { serializeWorkItem } from "./parser.js";
 
 const DATA_PATH =
@@ -23,6 +23,7 @@ function seed() {
     console.log("  config.yaml already exists, skipping config.");
   } else {
     const config: WcpConfig = {
+      schema: { ...DEFAULT_SCHEMA },
       namespaces: {
         PIPE: {
           name: "Pipeline Skills",

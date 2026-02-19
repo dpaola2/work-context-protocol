@@ -19,7 +19,9 @@ import {
   validateStatus,
   validatePriority,
   validateType,
+  validateArtifactType,
 } from "../validation.js";
+import { resolveSchema } from "../schema.js";
 import {
   NotFoundError,
   NamespaceNotFoundError,
@@ -189,11 +191,12 @@ export class FilesystemAdapter implements WcpAdapter {
       throw new NamespaceNotFoundError(namespace);
     }
 
-    // Validate optional fields
+    // Validate optional fields against resolved schema
+    const resolved = resolveSchema(config, namespace);
     const status = input.status || "backlog";
-    validateStatus(status);
-    if (input.priority) validatePriority(input.priority);
-    if (input.type) validateType(input.type);
+    validateStatus(status, resolved.status.all);
+    if (input.priority) validatePriority(input.priority, resolved.priority.values);
+    if (input.type) validateType(input.type, resolved.type.values);
 
     // Increment counter
     const num = config.namespaces[namespace].next;
@@ -252,10 +255,11 @@ export class FilesystemAdapter implements WcpAdapter {
       throw new NotFoundError(id);
     }
 
-    // Validate fields
-    if (changes.status) validateStatus(changes.status);
-    if (changes.priority) validatePriority(changes.priority);
-    if (changes.type) validateType(changes.type);
+    // Validate fields against resolved schema
+    const resolved = resolveSchema(config, namespace);
+    if (changes.status) validateStatus(changes.status, resolved.status.all);
+    if (changes.priority) validatePriority(changes.priority, resolved.priority.values);
+    if (changes.type) validateType(changes.type, resolved.type.values);
 
     const content = fs.readFileSync(filePath, "utf-8");
     const parsed = parseWorkItem(content);
@@ -346,6 +350,10 @@ export class FilesystemAdapter implements WcpAdapter {
     if (!config.namespaces[namespace]) {
       throw new NamespaceNotFoundError(namespace);
     }
+
+    // Validate artifact type against resolved schema
+    const resolved = resolveSchema(config, namespace);
+    validateArtifactType(input.type, resolved.artifact_type.all);
 
     const itemPath = path.join(this.dataPath, namespace, `${id}.md`);
     if (!fs.existsSync(itemPath)) {

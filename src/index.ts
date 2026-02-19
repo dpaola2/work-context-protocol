@@ -6,6 +6,14 @@ import { z } from "zod";
 import { FilesystemAdapter } from "./adapters/filesystem.js";
 import type { WcpAdapter } from "./adapter.js";
 import { WcpError } from "./errors.js";
+import { readConfig, writeConfig } from "./config.js";
+import {
+  resolveSchema,
+  addNamespaceStatuses,
+  removeNamespaceStatuses,
+  addNamespaceArtifactTypes,
+  removeNamespaceArtifactTypes,
+} from "./schema.js";
 
 const DATA_PATH =
   process.env.WCP_DATA_PATH ||
@@ -58,12 +66,21 @@ WCP is a work item tracker for AI agents and humans. It stores structured work i
 7. **Attach documents**: Call wcp_attach to store artifact files (PRDs, specs, proposals) on a work item. These are stored in a companion directory.
 8. **Read documents**: Call wcp_get_artifact to retrieve the content of an attached artifact.
 
+## Schema Discovery
+
+Call **wcp_schema** to discover valid field values. Namespaces can extend statuses and artifact types.
+
+- **wcp_schema(namespace?)** — returns valid values for all fields. If namespace is provided, includes namespace-specific extensions merged with defaults.
+- **wcp_schema_update(namespace, ...)** — add or remove custom statuses and artifact types for a namespace.
+
 ## Field Values
 
-- **status**: backlog, todo, in_progress, in_review, done, cancelled
-- **priority**: urgent, high, medium, low
-- **type**: feature, bug, chore, spike
-- **artifact types**: prd, discovery, architecture, gameplan, test-matrix, progress, review, qa-plan (or any string)
+Use wcp_schema for the authoritative list. Defaults:
+
+- **status**: backlog, todo, in_progress, in_review, done, cancelled (extensible per namespace)
+- **priority**: urgent, high, medium, low (fixed)
+- **type**: feature, bug, chore, spike (fixed)
+- **artifact types**: prd, discovery, architecture, adr, gameplan, plan, test-matrix, review, qa-plan (extensible per namespace)
 
 ## Artifact Convention
 
@@ -86,6 +103,52 @@ server.tool(
     try {
       const namespaces = await adapter.listNamespaces();
       return jsonResponse({ namespaces, count: namespaces.length });
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
+// --- wcp_create_namespace ---
+server.tool(
+  "wcp_create_namespace",
+  "Create a new namespace for organizing work items. The key must be uppercase letters (e.g. 'PROJ', 'OPS'). Returns the created namespace.",
+  {
+    key: z
+      .string()
+      .describe("Uppercase namespace key, e.g. 'PROJ'. Must be unique."),
+    name: z.string().describe("Human-readable name, e.g. 'Project Alpha'"),
+    description: z.string().describe("What this namespace is for"),
+  },
+  async ({ key, name, description }) => {
+    try {
+      if (!/^[A-Z][A-Z0-9]*$/.test(key)) {
+        return errorResponse(
+          new WcpError(
+            "VALIDATION_ERROR",
+            `Invalid namespace key '${key}'. Must be uppercase letters/numbers, starting with a letter (e.g. 'PROJ').`,
+          ),
+        );
+      }
+
+      const config = readConfig(DATA_PATH);
+      if (config.namespaces[key]) {
+        return errorResponse(
+          new WcpError(
+            "VALIDATION_ERROR",
+            `Namespace '${key}' already exists.`,
+          ),
+        );
+      }
+
+      config.namespaces[key] = { name, description, next: 1 };
+      writeConfig(DATA_PATH, config);
+
+      return jsonResponse({
+        created: true,
+        namespace: { key, name, description, itemCount: 0 },
+      });
     } catch (err) {
       if (err instanceof WcpError) return errorResponse(err);
       throw err;
@@ -142,7 +205,7 @@ server.tool(
   {
     namespace: z.string().describe("Namespace key, e.g. 'PIPE'"),
     title: z.string().describe("Work item title"),
-    status: z.string().optional().describe("Status (default: backlog)"),
+    status: z.string().optional().describe("Status (default: backlog). Use wcp_schema to see valid values"),
     priority: z.string().optional().describe("Priority: urgent, high, medium, low"),
     type: z.string().optional().describe("Type: feature, bug, chore, spike"),
     project: z.string().optional().describe("Project name"),
@@ -174,7 +237,7 @@ server.tool(
   {
     id: z.string().describe("Work item callsign, e.g. 'PIPE-12'"),
     title: z.string().optional().describe("New title"),
-    status: z.string().optional().describe("New status"),
+    status: z.string().optional().describe("New status. Use wcp_schema to see valid values"),
     priority: z.string().optional().describe("New priority"),
     type: z.string().optional().describe("New type"),
     project: z.string().optional().describe("New project"),
@@ -223,7 +286,7 @@ server.tool(
   "Attach an artifact file to a work item. Stores the content in a companion directory ({NS}/{ID}/) and registers it in the work item's artifacts list. If an artifact with the same filename already exists, it is overwritten.",
   {
     id: z.string().describe("Work item callsign, e.g. 'PIPE-12'"),
-    type: z.string().describe("Artifact type, e.g. 'prd', 'architecture', 'gameplan', 'discovery', 'test-matrix', 'review'"),
+    type: z.string().describe("Artifact type. Use wcp_schema to see valid values"),
     title: z.string().describe("Human-readable artifact title"),
     filename: z.string().describe("Filename to store as, e.g. 'prd.md', 'architecture-proposal.md'"),
     content: z.string().describe("Full content of the artifact file"),
@@ -251,6 +314,123 @@ server.tool(
     try {
       const result = await adapter.getArtifact(id, filename);
       return jsonResponse(result);
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
+// --- wcp_schema ---
+server.tool(
+  "wcp_schema",
+  "Returns valid values for all work item fields (status, priority, type, artifact_type). If namespace is provided, includes namespace-specific extensions merged with defaults. Use this to discover valid values before creating or updating work items.",
+  {
+    namespace: z
+      .string()
+      .optional()
+      .describe(
+        "Namespace key (e.g. 'PIPE'). If provided, includes namespace extensions",
+      ),
+  },
+  async ({ namespace }) => {
+    try {
+      const config = readConfig(DATA_PATH);
+      if (namespace && !config.namespaces[namespace]) {
+        return errorResponse(
+          new WcpError(
+            "NAMESPACE_NOT_FOUND",
+            `Namespace ${namespace} not found. Use wcp_namespaces to see available namespaces.`,
+          ),
+        );
+      }
+      const schema = resolveSchema(config, namespace);
+      return jsonResponse({ schema, namespace: namespace ?? null });
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
+// --- wcp_schema_update ---
+server.tool(
+  "wcp_schema_update",
+  "Add or remove custom statuses and artifact types for a namespace. Cannot modify fixed enums (priority, type) or remove global defaults. Returns the updated schema.",
+  {
+    namespace: z.string().describe("Namespace key, e.g. 'PIPE'"),
+    add_statuses: z
+      .array(z.string())
+      .optional()
+      .describe("Status values to add as namespace extensions"),
+    remove_statuses: z
+      .array(z.string())
+      .optional()
+      .describe("Status extensions to remove (cannot remove defaults)"),
+    add_artifact_types: z
+      .array(z.string())
+      .optional()
+      .describe("Artifact type values to add as namespace extensions"),
+    remove_artifact_types: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Artifact type extensions to remove (cannot remove defaults)",
+      ),
+  },
+  async ({
+    namespace,
+    add_statuses,
+    remove_statuses,
+    add_artifact_types,
+    remove_artifact_types,
+  }) => {
+    try {
+      const config = readConfig(DATA_PATH);
+      if (!config.namespaces[namespace]) {
+        return errorResponse(
+          new WcpError(
+            "NAMESPACE_NOT_FOUND",
+            `Namespace ${namespace} not found. Use wcp_namespaces to see available namespaces.`,
+          ),
+        );
+      }
+
+      const changes: Record<string, string[]> = {};
+
+      if (add_statuses?.length) {
+        changes.added_statuses = addNamespaceStatuses(
+          config,
+          namespace,
+          add_statuses,
+        );
+      }
+      if (remove_statuses?.length) {
+        changes.removed_statuses = removeNamespaceStatuses(
+          config,
+          namespace,
+          remove_statuses,
+        );
+      }
+      if (add_artifact_types?.length) {
+        changes.added_artifact_types = addNamespaceArtifactTypes(
+          config,
+          namespace,
+          add_artifact_types,
+        );
+      }
+      if (remove_artifact_types?.length) {
+        changes.removed_artifact_types = removeNamespaceArtifactTypes(
+          config,
+          namespace,
+          remove_artifact_types,
+        );
+      }
+
+      writeConfig(DATA_PATH, config);
+
+      const schema = resolveSchema(config, namespace);
+      return jsonResponse({ updated: true, changes, schema });
     } catch (err) {
       if (err instanceof WcpError) return errorResponse(err);
       throw err;

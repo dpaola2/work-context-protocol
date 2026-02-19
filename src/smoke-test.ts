@@ -1,6 +1,22 @@
 import * as fs from "fs";
 import * as path from "path";
+import yaml from "js-yaml";
 import { FilesystemAdapter } from "./adapters/filesystem.js";
+import { DEFAULT_SCHEMA, type WcpConfig } from "./config.js";
+import { readConfig, writeConfig } from "./config.js";
+import {
+  resolveSchema,
+  addNamespaceStatuses,
+  removeNamespaceStatuses,
+  addNamespaceArtifactTypes,
+  removeNamespaceArtifactTypes,
+} from "./schema.js";
+import {
+  validateStatus,
+  validatePriority,
+  validateType,
+  validateArtifactType,
+} from "./validation.js";
 
 const DATA_PATH =
   process.env.WCP_DATA_PATH ||
@@ -246,6 +262,215 @@ async function smokeTest() {
   } catch (e: any) {
     check("missing artifact error", e.code === "NOT_FOUND");
   }
+
+  // 11. Schema resolution
+  console.log("\n11. Schema resolution");
+  const config = readConfig(DATA_PATH);
+
+  // Without namespace — global defaults
+  const globalSchema = resolveSchema(config);
+  check("global schema has default statuses", globalSchema.status.defaults.includes("backlog"));
+  check("global schema has no extensions", globalSchema.status.extensions.length === 0);
+  check("global all equals defaults when no extensions", globalSchema.status.all.length === globalSchema.status.defaults.length);
+  check("priority is fixed field", "values" in globalSchema.priority);
+  check("type is fixed field", "values" in globalSchema.type);
+  check("artifact_type has defaults", globalSchema.artifact_type.defaults.includes("prd"));
+  check("artifact_type includes adr", globalSchema.artifact_type.defaults.includes("adr"));
+
+  // With namespace — merges extensions
+  const nsSchema = resolveSchema(config, "OS");
+  check("namespace schema has default statuses", nsSchema.status.defaults.includes("done"));
+
+  // 12. Schema mutation — add/remove statuses
+  console.log("\n12. Schema mutation — statuses");
+  const mutConfig = readConfig(DATA_PATH);
+
+  // Add custom statuses
+  const addedStatuses = addNamespaceStatuses(mutConfig, "OS", ["deployed", "staging"]);
+  check("added custom statuses", addedStatuses.length === 2);
+  check("added includes deployed", addedStatuses.includes("deployed"));
+
+  // Idempotent — adding again does nothing
+  const addedAgain = addNamespaceStatuses(mutConfig, "OS", ["deployed"]);
+  check("idempotent add returns empty", addedAgain.length === 0);
+
+  // Skip if already a default
+  const addedDefault = addNamespaceStatuses(mutConfig, "OS", ["backlog"]);
+  check("skip default status", addedDefault.length === 0);
+
+  // Resolve includes extensions
+  const afterAdd = resolveSchema(mutConfig, "OS");
+  check("resolved includes deployed", afterAdd.status.all.includes("deployed"));
+  check("resolved includes staging", afterAdd.status.all.includes("staging"));
+  check("extensions list has deployed", afterAdd.status.extensions.includes("deployed"));
+
+  // Remove extension
+  const removedStatuses = removeNamespaceStatuses(mutConfig, "OS", ["staging"]);
+  check("removed staging", removedStatuses.includes("staging"));
+  const afterRemove = resolveSchema(mutConfig, "OS");
+  check("staging gone after remove", !afterRemove.status.all.includes("staging"));
+  check("deployed still present", afterRemove.status.all.includes("deployed"));
+
+  // Cannot remove default
+  try {
+    removeNamespaceStatuses(mutConfig, "OS", ["done"]);
+    check("cannot remove default status", false, "should have thrown");
+  } catch (e: any) {
+    check("cannot remove default status", e.code === "VALIDATION_ERROR");
+  }
+
+  // 13. Schema mutation — artifact types
+  console.log("\n13. Schema mutation — artifact types");
+  const addedTypes = addNamespaceArtifactTypes(mutConfig, "OS", ["release-notes", "changelog"]);
+  check("added artifact types", addedTypes.length === 2);
+
+  // Idempotent
+  const addedTypesAgain = addNamespaceArtifactTypes(mutConfig, "OS", ["release-notes"]);
+  check("idempotent artifact type add", addedTypesAgain.length === 0);
+
+  // Skip default
+  const addedDefaultType = addNamespaceArtifactTypes(mutConfig, "OS", ["prd"]);
+  check("skip default artifact type", addedDefaultType.length === 0);
+
+  // Remove extension
+  const removedTypes = removeNamespaceArtifactTypes(mutConfig, "OS", ["changelog"]);
+  check("removed changelog", removedTypes.includes("changelog"));
+
+  // Cannot remove default
+  try {
+    removeNamespaceArtifactTypes(mutConfig, "OS", ["prd"]);
+    check("cannot remove default artifact type", false, "should have thrown");
+  } catch (e: any) {
+    check("cannot remove default artifact type", e.code === "VALIDATION_ERROR");
+  }
+
+  // Write mutated config so we can test filesystem adapter with it
+  writeConfig(DATA_PATH, mutConfig);
+
+  // 14. Validation with resolved schema
+  console.log("\n14. Validation with resolved schema");
+  const resolvedOS = resolveSchema(mutConfig, "OS");
+
+  // Valid default status
+  try {
+    validateStatus("backlog", resolvedOS.status.all);
+    check("valid default status passes", true);
+  } catch {
+    check("valid default status passes", false);
+  }
+
+  // Valid custom status
+  try {
+    validateStatus("deployed", resolvedOS.status.all);
+    check("valid custom status passes", true);
+  } catch {
+    check("valid custom status passes", false);
+  }
+
+  // Invalid status with suggestion
+  try {
+    validateStatus("deplyed", resolvedOS.status.all);
+    check("invalid status rejected", false, "should have thrown");
+  } catch (e: any) {
+    check("invalid status rejected", e.code === "VALIDATION_ERROR");
+    check("error suggests closest match", e.message.includes("deployed"));
+    check("error references wcp_schema", e.message.includes("wcp_schema"));
+  }
+
+  // Valid priority
+  try {
+    validatePriority("high", resolvedOS.priority.values);
+    check("valid priority passes", true);
+  } catch {
+    check("valid priority passes", false);
+  }
+
+  // Invalid priority
+  try {
+    validatePriority("super", resolvedOS.priority.values);
+    check("invalid priority rejected", false, "should have thrown");
+  } catch (e: any) {
+    check("invalid priority rejected", e.code === "VALIDATION_ERROR");
+  }
+
+  // Valid artifact type
+  try {
+    validateArtifactType("prd", resolvedOS.artifact_type.all);
+    check("valid artifact type passes", true);
+  } catch {
+    check("valid artifact type passes", false);
+  }
+
+  // Custom artifact type
+  try {
+    validateArtifactType("release-notes", resolvedOS.artifact_type.all);
+    check("custom artifact type passes", true);
+  } catch {
+    check("custom artifact type passes", false);
+  }
+
+  // Invalid artifact type with suggestion
+  try {
+    validateArtifactType("relaese-notes", resolvedOS.artifact_type.all);
+    check("invalid artifact type rejected", false, "should have thrown");
+  } catch (e: any) {
+    check("invalid artifact type rejected", e.code === "VALIDATION_ERROR");
+    check("artifact error suggests match", e.message.includes("release-notes"));
+  }
+
+  // 15. Create with custom status via filesystem adapter
+  console.log("\n15. Create with custom status");
+  const customId = await adapter.createItem("OS", {
+    title: "Custom status test",
+    status: "deployed",
+  });
+  const customItem = await adapter.getItem(customId);
+  check("item created with custom status", customItem.status === "deployed");
+
+  // 16. Attach with validated artifact type
+  console.log("\n16. Attach with validated artifact type");
+  await adapter.attachArtifact(customId, {
+    type: "release-notes",
+    title: "v1.0 Release Notes",
+    filename: "release-notes.md",
+    content: "# v1.0\n\nInitial release.",
+  });
+  const withCustomArtifact = await adapter.getItem(customId);
+  check("custom artifact type attached", withCustomArtifact.artifacts.some(a => a.type === "release-notes"));
+
+  // Invalid artifact type on attach
+  try {
+    await adapter.attachArtifact(customId, {
+      type: "bogus-type",
+      title: "Bad",
+      filename: "bad.md",
+      content: "nope",
+    });
+    check("invalid artifact type error on attach", false, "should have thrown");
+  } catch (e: any) {
+    check("invalid artifact type error on attach", e.code === "VALIDATION_ERROR");
+  }
+
+  // 17. Backward compatibility — config without schema key
+  console.log("\n17. Backward compatibility");
+  const bareConfig: WcpConfig = {
+    namespaces: {
+      TEST: { name: "Test", description: "Test namespace", next: 1 },
+    },
+  };
+  const bareSchema = resolveSchema(bareConfig);
+  check("bare config resolves defaults", bareSchema.status.defaults.length === DEFAULT_SCHEMA.status.length);
+  check("bare config has default priorities", bareSchema.priority.values.length === DEFAULT_SCHEMA.priority.length);
+  check("bare config has default artifact types", bareSchema.artifact_type.defaults.length === DEFAULT_SCHEMA.artifact_type.length);
+
+  // 18. Cleanup — remove extensions from OS namespace config
+  console.log("\n18. Cleanup");
+  removeNamespaceStatuses(mutConfig, "OS", ["deployed"]);
+  removeNamespaceArtifactTypes(mutConfig, "OS", ["release-notes"]);
+  writeConfig(DATA_PATH, mutConfig);
+  const cleanedSchema = resolveSchema(readConfig(DATA_PATH), "OS");
+  check("cleanup removed extensions", cleanedSchema.status.extensions.length === 0);
+  check("cleanup removed artifact extensions", cleanedSchema.artifact_type.extensions.length === 0);
 
   // Summary
   console.log(`\n=== Results: ${pass} passed, ${fail} failed ===\n`);

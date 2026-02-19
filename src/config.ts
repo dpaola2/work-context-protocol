@@ -2,13 +2,44 @@ import * as fs from "fs";
 import * as path from "path";
 import yaml from "js-yaml";
 
+export interface NamespaceSchemaConfig {
+  statuses?: string[];
+  artifact_types?: string[];
+}
+
+export interface SchemaConfig {
+  status: string[];
+  priority: string[];
+  type: string[];
+  artifact_type: string[];
+}
+
+export const DEFAULT_SCHEMA: SchemaConfig = {
+  status: ["backlog", "todo", "in_progress", "in_review", "done", "cancelled"],
+  priority: ["urgent", "high", "medium", "low"],
+  type: ["feature", "bug", "chore", "spike"],
+  artifact_type: [
+    "prd",
+    "discovery",
+    "architecture",
+    "adr",
+    "gameplan",
+    "plan",
+    "test-matrix",
+    "review",
+    "qa-plan",
+  ],
+};
+
 export interface NamespaceConfig {
   name: string;
   description: string;
   next: number;
+  schema?: NamespaceSchemaConfig;
 }
 
 export interface WcpConfig {
+  schema?: SchemaConfig;
   namespaces: Record<string, NamespaceConfig>;
 }
 
