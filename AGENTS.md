@@ -145,6 +145,7 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **Error testing:** Use try/catch blocks, assert on `e.code` values (`"NOT_FOUND"`, `"VALIDATION_ERROR"`, `"NAMESPACE_NOT_FOUND"`).
 - **String assertions:** Use `includes()` for activity log content, not strict equality. This avoids brittle tests when new entries are appended.
 - **Artifact frontmatter:** `gray-matter` handles round-trip parsing of artifact YAML frontmatter. `matter(content)` → `{ data, content }`, `matter.stringify(content, data)` recombines. Works cleanly even on files with no existing frontmatter (adds `---` header).
+- **Timestamp comparison:** `gray-matter` (via `js-yaml`) auto-parses unquoted ISO 8601 strings in YAML as JavaScript `Date` objects. The `>` operator on `Date` objects uses `valueOf()` (epoch ms), making comparisons timezone-safe regardless of offset format. This is why `detectPipelineStage()` can safely compare `completedAt` fields from different sources.
 - **Schema mutation tests:** Use `addNamespaceStatuses()` / `removeNamespaceStatuses()` directly, with cleanup in `finally` blocks.
 - **New test files** should follow the `smoke-test.ts` pattern exactly — same `check()` helper, same structure, same exit behavior.
 
