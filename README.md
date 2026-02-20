@@ -227,8 +227,9 @@ Future adapters implement the same `WcpAdapter` interface against different back
 ## Design principles
 
 1. **Evolve from working systems.** Build the tool. Use it. Extract the protocol from what works.
-2. **Keep it simple.** 11 tools. Markdown files. YAML frontmatter. That's it.
-3. **Bidirectional.** Agents read context AND write back — status, comments, artifacts.
-4. **Markdown is the data format.** Human-readable, grep-able, Obsidian-compatible, git-trackable.
-5. **No business logic.** Pure data layer. No automations, triggers, or enforced transitions.
-6. **No git operations.** WCP reads and writes files. Git commit/push is your concern.
+2. **Keep it simple.** Markdown files. YAML frontmatter. That's it.
+3. **Contextualize work, don't just store it.** WCP's job isn't to be a database of work items. It's to look at the current state of a piece of work and provide the right framing, data, and instructions for whoever — human or agent — picks it up next.
+4. **Bidirectional.** Agents read context AND write back — status, comments, artifacts.
+5. **Markdown is the data format.** Human-readable, grep-able, Obsidian-compatible, git-trackable.
+6. **No enforced transitions.** Pure data layer. No automations, triggers, or enforced state machines.
+7. **No git operations.** WCP reads and writes files. Git commit/push is your concern.
