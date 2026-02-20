@@ -14,6 +14,7 @@ import {
   addNamespaceArtifactTypes,
   removeNamespaceArtifactTypes,
 } from "./schema.js";
+import { workPromptHandler } from "./prompts/work.js";
 
 const DATA_PATH =
   process.env.WCP_DATA_PATH ||
@@ -455,6 +456,22 @@ server.tool(
       if (err instanceof WcpError) return errorResponse(err);
       throw err;
     }
+  },
+);
+
+// --- /work prompt ---
+server.registerPrompt(
+  "work",
+  {
+    title: "Work on item",
+    description:
+      "Determines the next pipeline stage for a work item and provides context-loaded instructions.",
+    argsSchema: {
+      id: z.string().describe("Work item callsign, e.g. 'PIPE-3'"),
+    },
+  },
+  async ({ id }) => {
+    return workPromptHandler(adapter, id);
   },
 );
 

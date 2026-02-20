@@ -131,8 +131,10 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 |-----------|----------|
 | `src/` | All source and test files (flat structure) |
 | `src/adapters/` | Adapter implementations (`filesystem.ts`) |
+| `src/prompts/` | `/work` prompt infrastructure — stage detection, helpers, orchestrator, 8 stage prompt builders |
 | `src/smoke-test.ts` | Main smoke test suite |
 | `src/status-transition-test.ts` | Status transition auto-log tests (WCP-9) |
+| `src/work-prompt-test.ts` | `/work` prompt and stage detection tests (WCP-11) |
 | `dist/` | Compiled JavaScript output |
 
 ### Test Conventions
@@ -150,3 +152,9 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 
 - All internal imports use `.js` extension (required by Node16 module resolution): `import { foo } from "./bar.js"`
 - Type-only imports use `import type { ... }` syntax
+
+### MCP SDK Conventions
+
+- **Prompt registration:** `server.registerPrompt(name, config, callback)` — callback returns `GetPromptResult` with `messages: PromptMessage[]`
+- **SDK type compatibility:** `GetPromptResult` and `PromptMessage` require `[key: string]: unknown` index signature. Define local interfaces with this signature rather than importing SDK types directly to avoid coupling.
+- **Embedded resources:** Use `{ type: "resource", resource: { uri, mimeType, text } }` for embedding work item and artifact content in prompt messages. `wcp://` URIs are metadata strings — no registered MCP resources required.
