@@ -31,7 +31,7 @@ async function statusTransitionTest() {
 
   // ── LOG-001: Status change produces activity log entry ──────────────
   console.log("\n1. LOG-001: Status change produces activity entry");
-  const id1 = await adapter.createItem("OS", {
+  const id1 = await adapter.createItem("TEST", {
     title: "LOG-001 test",
     type: "chore",
   });
@@ -70,7 +70,7 @@ async function statusTransitionTest() {
 
   // ── LOG-004: Same-status update is a no-op ──────────────────────────
   console.log("\n4. LOG-004: Same-status no-op");
-  const id4 = await adapter.createItem("OS", {
+  const id4 = await adapter.createItem("TEST", {
     title: "LOG-004 test",
     type: "chore",
   });
@@ -85,7 +85,7 @@ async function statusTransitionTest() {
 
   // ── LOG-005: Entry at end of activity log, blank-line separated ─────
   console.log("\n5. LOG-005: Entry position and separation");
-  const id5 = await adapter.createItem("OS", {
+  const id5 = await adapter.createItem("TEST", {
     title: "LOG-005 test",
     type: "chore",
   });
@@ -106,7 +106,7 @@ async function statusTransitionTest() {
 
   // ── LOG-006: Only status logged when multiple fields change ─────────
   console.log("\n6. LOG-006: Multi-field update");
-  const id6 = await adapter.createItem("OS", {
+  const id6 = await adapter.createItem("TEST", {
     title: "LOG-006 test",
     type: "chore",
   });
@@ -162,7 +162,7 @@ async function statusTransitionTest() {
 
   // ── SCOPE-001: wcp_create does NOT produce transition entry ─────────
   console.log("\n9. SCOPE-001: Create does not log");
-  const id9 = await adapter.createItem("OS", {
+  const id9 = await adapter.createItem("TEST", {
     title: "SCOPE-001 test",
     status: "todo",
     type: "chore",
@@ -183,7 +183,7 @@ async function statusTransitionTest() {
 
   // ── SCOPE-002: Non-status field changes don't generate entries ──────
   console.log("\n10. SCOPE-002: Non-status changes ignored");
-  const id10 = await adapter.createItem("OS", {
+  const id10 = await adapter.createItem("TEST", {
     title: "SCOPE-002 test",
     type: "chore",
   });
@@ -202,7 +202,7 @@ async function statusTransitionTest() {
 
   // ── Edge case: Multiple rapid status changes ────────────────────────
   console.log("\n11. Edge: Multiple rapid status changes");
-  const id11 = await adapter.createItem("OS", {
+  const id11 = await adapter.createItem("TEST", {
     title: "Rapid changes test",
     type: "chore",
   });
@@ -228,10 +228,10 @@ async function statusTransitionTest() {
   // ── Edge case: Namespace-extended status values ─────────────────────
   console.log("\n12. Edge: Extended status values");
   const config = readConfig(DATA_PATH);
-  addNamespaceStatuses(config, "OS", ["stage_0_prd"]);
+  addNamespaceStatuses(config, "TEST", ["stage_0_prd"]);
   writeConfig(DATA_PATH, config);
   try {
-    const id12 = await adapter.createItem("OS", {
+    const id12 = await adapter.createItem("TEST", {
       title: "Extended status test",
       type: "chore",
     });
@@ -244,13 +244,13 @@ async function statusTransitionTest() {
   } finally {
     // Cleanup: remove extension
     const cleanConfig = readConfig(DATA_PATH);
-    removeNamespaceStatuses(cleanConfig, "OS", ["stage_0_prd"]);
+    removeNamespaceStatuses(cleanConfig, "TEST", ["stage_0_prd"]);
     writeConfig(DATA_PATH, cleanConfig);
   }
 
   // ── Edge case: Body-only update produces no transition entry ────────
   console.log("\n13. Edge: Body-only update");
-  const id13 = await adapter.createItem("OS", {
+  const id13 = await adapter.createItem("TEST", {
     title: "Body-only test",
     type: "chore",
   });
