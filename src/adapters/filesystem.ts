@@ -264,6 +264,17 @@ export class FilesystemAdapter implements WcpAdapter {
     const content = fs.readFileSync(filePath, "utf-8");
     const parsed = parseWorkItem(content);
 
+    // Auto-log status transition before mutating frontmatter
+    if (changes.status !== undefined && changes.status !== parsed.frontmatter.status) {
+      const timestamp = now();
+      const entry = `**system** — ${timestamp}\nStatus changed: ${parsed.frontmatter.status} → ${changes.status}`;
+      if (parsed.activity) {
+        parsed.activity = parsed.activity + "\n\n" + entry;
+      } else {
+        parsed.activity = entry;
+      }
+    }
+
     // Update frontmatter fields
     if (changes.title !== undefined) parsed.frontmatter.title = changes.title;
     if (changes.status !== undefined)

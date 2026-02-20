@@ -51,12 +51,12 @@ async function smokeTest() {
 
   // 2. wcp_create
   console.log("\n2. wcp_create");
-  const newId = await adapter.createItem("OS", {
+  const newId = await adapter.createItem("TEST", {
     title: "Smoke test item",
     type: "chore",
     body: "Created by smoke test.",
   });
-  check("returns callsign", /^OS-\d+$/.test(newId), newId);
+  check("returns callsign", /^TEST-\d+$/.test(newId), newId);
 
   // 3. wcp_get
   console.log("\n3. wcp_get");
@@ -92,14 +92,14 @@ async function smokeTest() {
 
   // 6. wcp_list
   console.log("\n6. wcp_list");
-  const allOS = await adapter.listItems("OS");
-  check("OS has items", allOS.length >= 1);
+  const allOS = await adapter.listItems("TEST");
+  check("TEST has items", allOS.length >= 1);
   check(
     "created item in list",
     allOS.some((i) => i.id === newId),
   );
 
-  const filtered = await adapter.listItems("OS", { status: "in_progress" });
+  const filtered = await adapter.listItems("TEST", { status: "in_progress" });
   check(
     "filter works",
     filtered.every((i) => i.status === "in_progress"),
@@ -154,7 +154,7 @@ async function smokeTest() {
   }
 
   // Empty namespace list
-  const emptyList = await adapter.listItems("OS", { status: "cancelled" });
+  const emptyList = await adapter.listItems("TEST", { status: "cancelled" });
   check("empty filter returns empty list", emptyList.length === 0);
 
   // Non-existent namespace
@@ -175,7 +175,7 @@ async function smokeTest() {
 
   // Invalid priority on create
   try {
-    await adapter.createItem("OS", { title: "test", priority: "super" as any });
+    await adapter.createItem("TEST", { title: "test", priority: "super" as any });
     check("invalid priority error", false, "should have thrown");
   } catch (e: any) {
     check("invalid priority error", e.code === "VALIDATION_ERROR");
@@ -183,16 +183,16 @@ async function smokeTest() {
 
   // Invalid type on create
   try {
-    await adapter.createItem("OS", { title: "test", type: "epic" as any });
+    await adapter.createItem("TEST", { title: "test", type: "epic" as any });
     check("invalid type error", false, "should have thrown");
   } catch (e: any) {
     check("invalid type error", e.code === "VALIDATION_ERROR");
   }
 
   // Malformed YAML — write a broken file and try to read it
-  const brokenPath = path.join(DATA_PATH, "OS", "OS-9999.md");
+  const brokenPath = path.join(DATA_PATH, "TEST", "TEST-9999.md");
   fs.writeFileSync(brokenPath, "---\n: broken: yaml: {{{\n---\nsome body", "utf-8");
-  const brokenItem = await adapter.getItem("OS-9999");
+  const brokenItem = await adapter.getItem("TEST-9999");
   check("malformed YAML returns warning", !!brokenItem.warning);
   check("malformed YAML has raw body", brokenItem.body.length > 0);
   fs.unlinkSync(brokenPath);
@@ -278,7 +278,7 @@ async function smokeTest() {
   check("artifact_type includes adr", globalSchema.artifact_type.defaults.includes("adr"));
 
   // With namespace — merges extensions
-  const nsSchema = resolveSchema(config, "OS");
+  const nsSchema = resolveSchema(config, "TEST");
   check("namespace schema has default statuses", nsSchema.status.defaults.includes("done"));
 
   // 12. Schema mutation — add/remove statuses
@@ -286,34 +286,34 @@ async function smokeTest() {
   const mutConfig = readConfig(DATA_PATH);
 
   // Add custom statuses
-  const addedStatuses = addNamespaceStatuses(mutConfig, "OS", ["deployed", "staging"]);
+  const addedStatuses = addNamespaceStatuses(mutConfig, "TEST", ["deployed", "staging"]);
   check("added custom statuses", addedStatuses.length === 2);
   check("added includes deployed", addedStatuses.includes("deployed"));
 
   // Idempotent — adding again does nothing
-  const addedAgain = addNamespaceStatuses(mutConfig, "OS", ["deployed"]);
+  const addedAgain = addNamespaceStatuses(mutConfig, "TEST", ["deployed"]);
   check("idempotent add returns empty", addedAgain.length === 0);
 
   // Skip if already a default
-  const addedDefault = addNamespaceStatuses(mutConfig, "OS", ["backlog"]);
+  const addedDefault = addNamespaceStatuses(mutConfig, "TEST", ["backlog"]);
   check("skip default status", addedDefault.length === 0);
 
   // Resolve includes extensions
-  const afterAdd = resolveSchema(mutConfig, "OS");
+  const afterAdd = resolveSchema(mutConfig, "TEST");
   check("resolved includes deployed", afterAdd.status.all.includes("deployed"));
   check("resolved includes staging", afterAdd.status.all.includes("staging"));
   check("extensions list has deployed", afterAdd.status.extensions.includes("deployed"));
 
   // Remove extension
-  const removedStatuses = removeNamespaceStatuses(mutConfig, "OS", ["staging"]);
+  const removedStatuses = removeNamespaceStatuses(mutConfig, "TEST", ["staging"]);
   check("removed staging", removedStatuses.includes("staging"));
-  const afterRemove = resolveSchema(mutConfig, "OS");
+  const afterRemove = resolveSchema(mutConfig, "TEST");
   check("staging gone after remove", !afterRemove.status.all.includes("staging"));
   check("deployed still present", afterRemove.status.all.includes("deployed"));
 
   // Cannot remove default
   try {
-    removeNamespaceStatuses(mutConfig, "OS", ["done"]);
+    removeNamespaceStatuses(mutConfig, "TEST", ["done"]);
     check("cannot remove default status", false, "should have thrown");
   } catch (e: any) {
     check("cannot remove default status", e.code === "VALIDATION_ERROR");
@@ -321,24 +321,24 @@ async function smokeTest() {
 
   // 13. Schema mutation — artifact types
   console.log("\n13. Schema mutation — artifact types");
-  const addedTypes = addNamespaceArtifactTypes(mutConfig, "OS", ["release-notes", "changelog"]);
+  const addedTypes = addNamespaceArtifactTypes(mutConfig, "TEST", ["release-notes", "changelog"]);
   check("added artifact types", addedTypes.length === 2);
 
   // Idempotent
-  const addedTypesAgain = addNamespaceArtifactTypes(mutConfig, "OS", ["release-notes"]);
+  const addedTypesAgain = addNamespaceArtifactTypes(mutConfig, "TEST", ["release-notes"]);
   check("idempotent artifact type add", addedTypesAgain.length === 0);
 
   // Skip default
-  const addedDefaultType = addNamespaceArtifactTypes(mutConfig, "OS", ["prd"]);
+  const addedDefaultType = addNamespaceArtifactTypes(mutConfig, "TEST", ["prd"]);
   check("skip default artifact type", addedDefaultType.length === 0);
 
   // Remove extension
-  const removedTypes = removeNamespaceArtifactTypes(mutConfig, "OS", ["changelog"]);
+  const removedTypes = removeNamespaceArtifactTypes(mutConfig, "TEST", ["changelog"]);
   check("removed changelog", removedTypes.includes("changelog"));
 
   // Cannot remove default
   try {
-    removeNamespaceArtifactTypes(mutConfig, "OS", ["prd"]);
+    removeNamespaceArtifactTypes(mutConfig, "TEST", ["prd"]);
     check("cannot remove default artifact type", false, "should have thrown");
   } catch (e: any) {
     check("cannot remove default artifact type", e.code === "VALIDATION_ERROR");
@@ -349,7 +349,7 @@ async function smokeTest() {
 
   // 14. Validation with resolved schema
   console.log("\n14. Validation with resolved schema");
-  const resolvedOS = resolveSchema(mutConfig, "OS");
+  const resolvedOS = resolveSchema(mutConfig, "TEST");
 
   // Valid default status
   try {
@@ -420,7 +420,7 @@ async function smokeTest() {
 
   // 15. Create with custom status via filesystem adapter
   console.log("\n15. Create with custom status");
-  const customId = await adapter.createItem("OS", {
+  const customId = await adapter.createItem("TEST", {
     title: "Custom status test",
     status: "deployed",
   });
@@ -463,12 +463,12 @@ async function smokeTest() {
   check("bare config has default priorities", bareSchema.priority.values.length === DEFAULT_SCHEMA.priority.length);
   check("bare config has default artifact types", bareSchema.artifact_type.defaults.length === DEFAULT_SCHEMA.artifact_type.length);
 
-  // 18. Cleanup — remove extensions from OS namespace config
+  // 18. Cleanup — remove extensions from TEST namespace config
   console.log("\n18. Cleanup");
-  removeNamespaceStatuses(mutConfig, "OS", ["deployed"]);
-  removeNamespaceArtifactTypes(mutConfig, "OS", ["release-notes"]);
+  removeNamespaceStatuses(mutConfig, "TEST", ["deployed"]);
+  removeNamespaceArtifactTypes(mutConfig, "TEST", ["release-notes"]);
   writeConfig(DATA_PATH, mutConfig);
-  const cleanedSchema = resolveSchema(readConfig(DATA_PATH), "OS");
+  const cleanedSchema = resolveSchema(readConfig(DATA_PATH), "TEST");
   check("cleanup removed extensions", cleanedSchema.status.extensions.length === 0);
   check("cleanup removed artifact extensions", cleanedSchema.artifact_type.extensions.length === 0);
 
