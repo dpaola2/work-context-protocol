@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-WCP (Work Context Protocol) is an MCP server that provides structured work item tracking via markdown files with YAML frontmatter. It exposes 11 tools over MCP for creating, reading, updating, and organizing work items by namespace.
+WCP (Work Context Protocol) is an MCP server that provides structured work item tracking via markdown files with YAML frontmatter. It exposes 12 tools over MCP for creating, reading, updating, and organizing work items by namespace.
 
 **Runtime:** Node.js + TypeScript (ES2022, Node16 module resolution)
 **Transport:** MCP stdio
@@ -16,10 +16,10 @@ WCP (Work Context Protocol) is an MCP server that provides structured work item 
 |------|---------|
 | `src/adapter.ts` | Protocol contract — all TypeScript interfaces (`WcpAdapter`, `WorkItem`, `UpdateItemInput`, etc.) |
 | `src/adapters/filesystem.ts` | All I/O logic — the only `WcpAdapter` implementation. Read/write/query operations on markdown files |
-| `src/index.ts` | MCP server setup — 11 tool handlers, each a thin pass-through to the adapter |
+| `src/index.ts` | MCP server setup — 12 tool handlers, each a thin pass-through to the adapter |
 | `src/parser.ts` | `parseWorkItem()` / `serializeWorkItem()` — markdown ↔ frontmatter/body/activity round-trip |
 | `src/schema.ts` | `resolveSchema()` — merges global defaults with namespace extensions. Called on every write |
-| `src/validation.ts` | Field validators — `validateStatus()`, `validatePriority()`, `validateType()`, `validateArtifactType()` |
+| `src/validation.ts` | Field validators — `validateStatus()`, `validatePriority()`, `validateType()`, `validateArtifactType()`, `validateVerdict()` |
 | `src/utils.ts` | `parseCallsign()`, `today()` (date-only), `now()` (ISO 8601 with ms) |
 | `src/errors.ts` | Error hierarchy — `WcpError` → `NotFoundError`, `NamespaceNotFoundError`, `ValidationError` |
 | `src/config.ts` | `readConfig()` / `writeConfig()` for `.wcp/config.yaml` |
@@ -142,6 +142,7 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **Test data:** Created inline using `adapter.createItem("OS", { ... })` in the OS namespace. Tests do not clean up after themselves.
 - **Error testing:** Use try/catch blocks, assert on `e.code` values (`"NOT_FOUND"`, `"VALIDATION_ERROR"`, `"NAMESPACE_NOT_FOUND"`).
 - **String assertions:** Use `includes()` for activity log content, not strict equality. This avoids brittle tests when new entries are appended.
+- **Artifact frontmatter:** `gray-matter` handles round-trip parsing of artifact YAML frontmatter. `matter(content)` → `{ data, content }`, `matter.stringify(content, data)` recombines. Works cleanly even on files with no existing frontmatter (adds `---` header).
 - **Schema mutation tests:** Use `addNamespaceStatuses()` / `removeNamespaceStatuses()` directly, with cleanup in `finally` blocks.
 - **New test files** should follow the `smoke-test.ts` pattern exactly — same `check()` helper, same structure, same exit behavior.
 

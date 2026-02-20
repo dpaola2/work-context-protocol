@@ -76,6 +76,11 @@ export interface ArtifactContent {
   content: string;
 }
 
+export interface ApproveArtifactInput {
+  filename: string;
+  verdict: string;
+}
+
 export interface WcpAdapter {
   listNamespaces(): Promise<Namespace[]>;
   listItems(namespace: string, filters?: ItemFilters): Promise<ItemSummary[]>;
@@ -85,4 +90,5 @@ export interface WcpAdapter {
   addComment(id: string, author: string, body: string): Promise<void>;
   attachArtifact(id: string, input: AttachArtifactInput): Promise<Artifact>;
   getArtifact(id: string, filename: string): Promise<ArtifactContent>;
+  approveArtifact(id: string, input: ApproveArtifactInput): Promise<void>;
 }

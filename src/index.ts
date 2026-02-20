@@ -321,6 +321,26 @@ server.tool(
   },
 );
 
+// --- wcp_approve ---
+server.tool(
+  "wcp_approve",
+  "Record an approval decision on an artifact. Sets the approval field in the artifact's YAML frontmatter and logs the decision to the work item's activity log.",
+  {
+    id: z.string().describe("Work item callsign, e.g. 'PIPE-12'"),
+    artifact: z.string().describe("Artifact filename, e.g. 'architecture-proposal.md'"),
+    verdict: z.string().describe("Approval verdict: 'approved' or 'rejected'"),
+  },
+  async ({ id, artifact, verdict }) => {
+    try {
+      await adapter.approveArtifact(id, { filename: artifact, verdict });
+      return jsonResponse({ approved: true, verdict });
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
 // --- wcp_schema ---
 server.tool(
   "wcp_schema",

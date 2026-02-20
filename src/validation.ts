@@ -83,6 +83,17 @@ export function validateType(value: string, validTypes: string[]): void {
   }
 }
 
+const VALID_VERDICTS = ["approved", "rejected"];
+
+export function validateVerdict(value: string): void {
+  if (!VALID_VERDICTS.includes(value)) {
+    throw new ValidationError(
+      "verdict",
+      formatError(value, VALID_VERDICTS, "verdicts"),
+    );
+  }
+}
+
 export function validateArtifactType(
   value: string,
   validTypes: string[],

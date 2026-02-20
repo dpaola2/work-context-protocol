@@ -1,5 +1,6 @@
 import * as fs from "fs";
 import * as path from "path";
+import matter from "gray-matter";
 import type {
   WcpAdapter,
   Namespace,
@@ -10,6 +11,7 @@ import type {
   CreateItemInput,
   UpdateItemInput,
   AttachArtifactInput,
+  ApproveArtifactInput,
   ItemFilters,
 } from "../adapter.js";
 import { readConfig, writeConfig } from "../config.js";
@@ -20,6 +22,7 @@ import {
   validatePriority,
   validateType,
   validateArtifactType,
+  validateVerdict,
 } from "../validation.js";
 import { resolveSchema } from "../schema.js";
 import {
@@ -451,5 +454,55 @@ export class FilesystemAdapter implements WcpAdapter {
     };
 
     return { artifact, content };
+  }
+
+  async approveArtifact(id: string, input: ApproveArtifactInput): Promise<void> {
+    const { namespace } = parseCallsign(id);
+    const config = readConfig(this.dataPath);
+    if (!config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+
+    validateVerdict(input.verdict);
+
+    const itemPath = path.join(this.dataPath, namespace, `${id}.md`);
+    if (!fs.existsSync(itemPath)) {
+      throw new NotFoundError(id);
+    }
+
+    const artifactPath = path.join(this.dataPath, namespace, id, input.filename);
+    if (!fs.existsSync(artifactPath)) {
+      throw new NotFoundError(`Artifact '${input.filename}' not found for ${id}`);
+    }
+
+    // Parse artifact frontmatter and set approval fields
+    const artifactContent = fs.readFileSync(artifactPath, "utf-8");
+    const parsed = matter(artifactContent);
+
+    parsed.data.approval = input.verdict;
+    if (input.verdict === "approved") {
+      parsed.data.pipeline_approved_at = now();
+    } else {
+      delete parsed.data.pipeline_approved_at;
+    }
+
+    const newArtifactContent = matter.stringify(parsed.content, parsed.data);
+    fs.writeFileSync(artifactPath, newArtifactContent, "utf-8");
+
+    // Append activity log entry to work item
+    const itemContent = fs.readFileSync(itemPath, "utf-8");
+    const parsedItem = parseWorkItem(itemContent);
+
+    const timestamp = now();
+    const entry = `**system** — ${timestamp}\nArtifact ${input.filename}: ${input.verdict}`;
+    if (parsedItem.activity) {
+      parsedItem.activity = parsedItem.activity + "\n\n" + entry;
+    } else {
+      parsedItem.activity = entry;
+    }
+
+    parsedItem.frontmatter.updated = today();
+    const newItemContent = serializeWorkItem(parsedItem);
+    fs.writeFileSync(itemPath, newItemContent, "utf-8");
   }
 }
