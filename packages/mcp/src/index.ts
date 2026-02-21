@@ -4,16 +4,8 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { FilesystemAdapter } from "./adapters/filesystem.js";
-import type { WcpAdapter } from "./adapter.js";
-import { WcpError } from "./errors.js";
-import { readConfig, writeConfig } from "./config.js";
-import {
-  resolveSchema,
-  addNamespaceStatuses,
-  removeNamespaceStatuses,
-  addNamespaceArtifactTypes,
-  removeNamespaceArtifactTypes,
-} from "./schema.js";
+import type { WcpAdapter } from "@wcp/shared";
+import { WcpError } from "@wcp/shared";
 
 
 const DATA_PATH =
@@ -38,7 +30,18 @@ function errorResponse(err: WcpError) {
   };
 }
 
-const adapter: WcpAdapter = new FilesystemAdapter(DATA_PATH);
+function createAdapter(): WcpAdapter {
+  const adapterType = process.env.WCP_ADAPTER || "filesystem";
+
+  switch (adapterType) {
+    case "filesystem":
+      return new FilesystemAdapter(DATA_PATH);
+    default:
+      throw new Error(`Unknown WCP_ADAPTER: ${adapterType}. Valid: filesystem`);
+  }
+}
+
+const adapter: WcpAdapter = createAdapter();
 
 const server = new McpServer(
   {
@@ -116,32 +119,8 @@ server.tool(
   },
   async ({ key, name, description }) => {
     try {
-      if (!/^[A-Z][A-Z0-9]*$/.test(key)) {
-        return errorResponse(
-          new WcpError(
-            "VALIDATION_ERROR",
-            `Invalid namespace key '${key}'. Must be uppercase letters/numbers, starting with a letter (e.g. 'PROJ').`,
-          ),
-        );
-      }
-
-      const config = readConfig(DATA_PATH);
-      if (config.namespaces[key]) {
-        return errorResponse(
-          new WcpError(
-            "VALIDATION_ERROR",
-            `Namespace '${key}' already exists.`,
-          ),
-        );
-      }
-
-      config.namespaces[key] = { name, description, next: 1 };
-      writeConfig(DATA_PATH, config);
-
-      return jsonResponse({
-        created: true,
-        namespace: { key, name, description, itemCount: 0 },
-      });
+      const namespace = await adapter.createNamespace(key, name, description);
+      return jsonResponse({ created: true, namespace });
     } catch (err) {
       if (err instanceof WcpError) return errorResponse(err);
       throw err;
@@ -348,16 +327,7 @@ server.tool(
   },
   async ({ namespace }) => {
     try {
-      const config = readConfig(DATA_PATH);
-      if (namespace && !config.namespaces[namespace]) {
-        return errorResponse(
-          new WcpError(
-            "NAMESPACE_NOT_FOUND",
-            `Namespace ${namespace} not found. Use wcp_namespaces to see available namespaces.`,
-          ),
-        );
-      }
-      const schema = resolveSchema(config, namespace);
+      const schema = await adapter.getSchema(namespace);
       return jsonResponse({ schema, namespace: namespace ?? null });
     } catch (err) {
       if (err instanceof WcpError) return errorResponse(err);
@@ -399,51 +369,13 @@ server.tool(
     remove_artifact_types,
   }) => {
     try {
-      const config = readConfig(DATA_PATH);
-      if (!config.namespaces[namespace]) {
-        return errorResponse(
-          new WcpError(
-            "NAMESPACE_NOT_FOUND",
-            `Namespace ${namespace} not found. Use wcp_namespaces to see available namespaces.`,
-          ),
-        );
-      }
-
-      const changes: Record<string, string[]> = {};
-
-      if (add_statuses?.length) {
-        changes.added_statuses = addNamespaceStatuses(
-          config,
-          namespace,
-          add_statuses,
-        );
-      }
-      if (remove_statuses?.length) {
-        changes.removed_statuses = removeNamespaceStatuses(
-          config,
-          namespace,
-          remove_statuses,
-        );
-      }
-      if (add_artifact_types?.length) {
-        changes.added_artifact_types = addNamespaceArtifactTypes(
-          config,
-          namespace,
-          add_artifact_types,
-        );
-      }
-      if (remove_artifact_types?.length) {
-        changes.removed_artifact_types = removeNamespaceArtifactTypes(
-          config,
-          namespace,
-          remove_artifact_types,
-        );
-      }
-
-      writeConfig(DATA_PATH, config);
-
-      const schema = resolveSchema(config, namespace);
-      return jsonResponse({ updated: true, changes, schema });
+      const result = await adapter.updateSchema(namespace, {
+        addStatuses: add_statuses,
+        removeStatuses: remove_statuses,
+        addArtifactTypes: add_artifact_types,
+        removeArtifactTypes: remove_artifact_types,
+      });
+      return jsonResponse({ updated: true, changes: result.changes, schema: result.schema });
     } catch (err) {
       if (err instanceof WcpError) return errorResponse(err);
       throw err;

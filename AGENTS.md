@@ -10,20 +10,32 @@ WCP (Work Context Protocol) is an MCP server that provides structured work item 
 
 ## Architecture
 
+### Monorepo Structure
+
+WCP is organized as an npm workspace monorepo with TypeScript project references:
+
+| Package | Path | Purpose |
+|---------|------|---------|
+| `@wcp/shared` | `packages/shared/` | Types, errors, validation, schema logic — zero runtime deps |
+| `@wcp/mcp` | `packages/mcp/` | MCP server, FilesystemAdapter, config YAML I/O, parser |
+| `@wcp/server` | `packages/server/` | SQLite REST API + web UI (future — scaffold only) |
+
+Build order is enforced by `tsconfig.json` project references (`tsc -b` builds shared → mcp/server).
+
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/adapter.ts` | Protocol contract — all TypeScript interfaces (`WcpAdapter`, `WorkItem`, `UpdateItemInput`, etc.) |
-| `src/adapters/filesystem.ts` | All I/O logic — the only `WcpAdapter` implementation. Read/write/query operations on markdown files |
-| `src/index.ts` | MCP server setup — tool handlers, each a thin pass-through to the adapter |
-| `src/parser.ts` | `parseWorkItem()` / `serializeWorkItem()` — markdown ↔ frontmatter/body/activity round-trip |
-| `src/schema.ts` | `resolveSchema()` — merges global defaults with namespace extensions. Called on every write |
-| `src/validation.ts` | Field validators — `validateStatus()`, `validatePriority()`, `validateType()`, `validateArtifactType()`, `validateVerdict()` |
-| `src/utils.ts` | `parseCallsign()`, `today()` (date-only), `now()` (ISO 8601 with ms) |
-| `src/errors.ts` | Error hierarchy — `WcpError` → `NotFoundError`, `NamespaceNotFoundError`, `ValidationError` |
-| `src/config.ts` | `readConfig()` / `writeConfig()` for `.wcp/config.yaml` |
-| `src/seed.ts` | Data seeding script |
+| `packages/shared/src/types.ts` | Protocol contract — all interfaces (`WcpAdapter`, `WorkItem`, `Namespace`, schema types, config types) |
+| `packages/shared/src/errors.ts` | Error hierarchy — `WcpError` → `NotFoundError`, `NamespaceNotFoundError`, `ValidationError` |
+| `packages/shared/src/validation.ts` | Field validators — `validateStatus()`, `validatePriority()`, `validateType()`, `validateArtifactType()`, `validateVerdict()` |
+| `packages/shared/src/schema.ts` | `resolveSchema()` — merges global defaults with namespace extensions. Schema mutation functions |
+| `packages/shared/src/utils.ts` | `parseCallsign()`, `today()` (date-only), `now()` (ISO 8601 with ms) |
+| `packages/mcp/src/adapters/filesystem.ts` | All I/O logic — the only `WcpAdapter` implementation. All 12 adapter methods |
+| `packages/mcp/src/index.ts` | MCP server setup — tool handlers, each a thin pass-through to the adapter |
+| `packages/mcp/src/parser.ts` | `parseWorkItem()` / `serializeWorkItem()` — markdown ↔ frontmatter/body/activity round-trip |
+| `packages/mcp/src/config.ts` | `readConfig()` / `writeConfig()` for `.wcp/config.yaml` |
+| `packages/mcp/src/seed.ts` | Data seeding script |
 
 ### Design Principles
 
@@ -106,9 +118,9 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 |-------|-------|
 | Default branch | `main` |
 | Branch prefix | `pipeline/` |
-| Test command | `npx tsx src/smoke-test.ts` |
-| Syntax check command | `npx tsc --noEmit` |
-| Build command | `npx tsc` |
+| Test command | `npx tsx packages/mcp/src/smoke-test.ts` |
+| Syntax check command | `npx tsc -b --noEmit` |
+| Build command | `npx tsc -b` |
 | Remote | `git@github.com:dpaola2/work-context-protocol.git` |
 
 ### Framework & Stack
@@ -129,11 +141,15 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 
 | Directory | Contents |
 |-----------|----------|
-| `src/` | All source and test files (flat structure) |
-| `src/adapters/` | Adapter implementations (`filesystem.ts`) |
-| `src/smoke-test.ts` | Main smoke test suite |
-| `src/status-transition-test.ts` | Status transition auto-log tests (WCP-9) |
-| `dist/` | Compiled JavaScript output |
+| `packages/shared/src/` | Shared types, errors, validation, schema (zero runtime deps) |
+| `packages/mcp/src/` | MCP server source and test files |
+| `packages/mcp/src/adapters/` | Adapter implementations (`filesystem.ts`) |
+| `packages/mcp/src/smoke-test.ts` | Main smoke test suite |
+| `packages/mcp/src/status-transition-test.ts` | Status transition auto-log tests (WCP-9) |
+| `packages/mcp/src/approve-test.ts` | Approval tool tests (WCP-11) |
+| `packages/mcp/src/adapter-expansion-test.ts` | Adapter expansion tests (WCP-19 M1) |
+| `packages/server/src/` | Server API source (future — scaffold only) |
+| `packages/*/dist/` | Compiled JavaScript output per package |
 
 ### Test Conventions
 
@@ -149,5 +165,6 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 ### Import Conventions
 
 - All internal imports use `.js` extension (required by Node16 module resolution): `import { foo } from "./bar.js"`
+- Cross-package imports use the package name: `import { WcpAdapter, validateStatus } from "@wcp/shared"`
 - Type-only imports use `import type { ... }` syntax
 

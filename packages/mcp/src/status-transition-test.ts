@@ -1,11 +1,10 @@
-import * as fs from "fs";
 import * as path from "path";
 import { FilesystemAdapter } from "./adapters/filesystem.js";
 import { readConfig, writeConfig } from "./config.js";
 import {
   addNamespaceStatuses,
   removeNamespaceStatuses,
-} from "./schema.js";
+} from "@wcp/shared";
 
 const DATA_PATH =
   process.env.WCP_DATA_PATH ||
