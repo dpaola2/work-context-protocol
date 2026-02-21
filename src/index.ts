@@ -52,8 +52,8 @@ WCP is a work item tracker for AI agents and humans. It stores structured work i
 
 ## Core Concepts
 
-- **Namespaces** organize work by domain (e.g., PIPE for pipeline work, SN for show notes). Each namespace has a directory of work items.
-- **Work items** are identified by callsigns like PIPE-12 or SN-3. Each has: frontmatter (structured fields), a markdown body (description/specs), and an activity log (append-only comments).
+- **Namespaces** organize work by domain (e.g., PROJ for a project, OPS for operations). Each namespace has a directory of work items.
+- **Work items** are identified by callsigns like PROJ-12 or OPS-3. Each has: frontmatter (structured fields), a markdown body (description/specs), and an activity log (append-only comments).
 - **Artifacts** are documents attached to work items (PRDs, architecture proposals, gameplans, etc.). Stored in a companion directory alongside the work item.
 
 ## Workflow
