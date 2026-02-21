@@ -1,6 +1,6 @@
 # WCP — Claude Code Instructions
 
-See [AGENTS.md](./AGENTS.md) for full project conventions, architecture, code patterns, and pipeline configuration.
+See [AGENTS.md](./AGENTS.md) for full project conventions, architecture, and code patterns.
 
 ## Quick Reference
 
