@@ -1,11 +1,12 @@
 import { Hono } from "hono";
 import { SqliteAdapter } from "./adapter.js";
+import { SSEBroker } from "./sse.js";
 import {
   WcpError,
   parseCallsign,
 } from "@wcp/shared";
 
-export function createApp(adapter: SqliteAdapter): Hono {
+export function createApp(adapter: SqliteAdapter, broker: SSEBroker): Hono {
   const app = new Hono();
 
   // Global error handler — maps WCP errors to HTTP status codes
@@ -24,6 +25,29 @@ export function createApp(adapter: SqliteAdapter): Hono {
     return c.json({ error: "INTERNAL_ERROR", message }, 500);
   });
 
+  // --- SSE endpoint ---
+
+  app.get("/api/events", (c) => {
+    let clientId: string;
+
+    const stream = new ReadableStream({
+      start(controller) {
+        clientId = broker.addClient(controller);
+      },
+      cancel() {
+        broker.removeClient(clientId);
+      },
+    });
+
+    return new Response(stream, {
+      headers: {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        "Connection": "keep-alive",
+      },
+    });
+  });
+
   // --- Namespace endpoints ---
 
   app.get("/api/namespaces", async (c) => {
@@ -38,6 +62,7 @@ export function createApp(adapter: SqliteAdapter): Hono {
       body.name,
       body.description,
     );
+    broker.emit("namespace_created", { key: namespace.key });
     return c.json({ created: true, namespace }, 201);
   });
 
@@ -65,6 +90,8 @@ export function createApp(adapter: SqliteAdapter): Hono {
     const namespace = c.req.param("namespace");
     const body = await c.req.json();
     const id = await adapter.createItem(namespace, body);
+    broker.emit("item_created", { id, namespace });
+    broker.emit("namespace_updated", { key: namespace });
     return c.json({ id }, 201);
   });
 
@@ -79,6 +106,8 @@ export function createApp(adapter: SqliteAdapter): Hono {
     const id = c.req.param("id");
     const body = await c.req.json();
     await adapter.updateItem(id, body);
+    const { namespace } = parseCallsign(id);
+    broker.emit("item_updated", { id, namespace });
     return c.json({ updated: true });
   });
 
@@ -88,6 +117,8 @@ export function createApp(adapter: SqliteAdapter): Hono {
     const id = c.req.param("id");
     const body = await c.req.json();
     await adapter.addComment(id, body.author, body.body);
+    const { namespace } = parseCallsign(id);
+    broker.emit("item_updated", { id, namespace });
     return c.json({ commented: true });
   });
 
@@ -97,6 +128,8 @@ export function createApp(adapter: SqliteAdapter): Hono {
     const id = c.req.param("id");
     const body = await c.req.json();
     const artifact = await adapter.attachArtifact(id, body);
+    const { namespace } = parseCallsign(id);
+    broker.emit("item_updated", { id, namespace });
     return c.json({ attached: true, artifact }, 201);
   });
 
@@ -112,6 +145,8 @@ export function createApp(adapter: SqliteAdapter): Hono {
     const filename = c.req.param("filename");
     const body = await c.req.json();
     await adapter.approveArtifact(id, { filename, verdict: body.verdict });
+    const { namespace } = parseCallsign(id);
+    broker.emit("item_updated", { id, namespace });
     return c.json({ approved: true, verdict: body.verdict });
   });
 
@@ -137,6 +172,7 @@ export function createApp(adapter: SqliteAdapter): Hono {
       addArtifactTypes: body.add_artifact_types,
       removeArtifactTypes: body.remove_artifact_types,
     });
+    broker.emit("schema_updated", { namespace });
     return c.json({
       updated: true,
       changes: result.changes,

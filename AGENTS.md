@@ -151,7 +151,9 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 | `packages/server/src/` | Server API: Hono REST + SQLite via `better-sqlite3` |
 | `packages/server/src/db.ts` | SQLite init, WAL mode, schema v1, forward-only migration runner |
 | `packages/server/src/adapter.ts` | `SqliteAdapter` — all 12 `WcpAdapter` methods via SQL |
-| `packages/server/src/routes.ts` | Hono route handlers for all API endpoints |
+| `packages/server/src/routes.ts` | Hono route handlers for all API endpoints + SSE |
+| `packages/server/src/sse.ts` | `SSEBroker` — in-process pub/sub for SSE event distribution |
+| `packages/server/public/` | Web UI static files (HTML + vanilla JS + CSS) |
 | `packages/*/dist/` | Compiled JavaScript output per package |
 
 ### Test Conventions
@@ -180,6 +182,9 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **Artifact approval content:** The `approveArtifact` method modifies stored content to include YAML frontmatter with `approval` and `pipeline_approved_at` fields (matching filesystem adapter behavior) — no `gray-matter` dependency, uses simple string manipulation.
 - **`DEFAULT_SCHEMA.artifact_type`** includes all standard WCP types (prd, discovery, architecture, adr, gameplan, plan, test-matrix, review, qa-plan). The filesystem adapter's config.yaml previously overrode the incomplete defaults.
 - **Server test command:** `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db npx tsx packages/server/src/index.ts &` then `npx tsx src/server-api-test.ts`
+- **SSE broker:** `SSEBroker` in `sse.ts` manages connected clients via `ReadableStreamDefaultController`. Mutation route handlers call `broker.emit(event, data)` after successful operations. Events: `item_created`, `item_updated`, `namespace_created`, `namespace_updated`, `schema_updated`.
+- **Static file serving:** `@hono/node-server/serve-static` with `root: "./packages/server/public"` (relative to CWD). Registered after API routes so `/api/*` takes priority.
+- **SSE test command:** Start server first (same as server test), then `npx tsx src/sse-test.ts`
 
 ### Import Conventions
 
