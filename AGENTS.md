@@ -16,7 +16,7 @@ WCP (Work Context Protocol) is an MCP server that provides structured work item 
 |------|---------|
 | `src/adapter.ts` | Protocol contract — all TypeScript interfaces (`WcpAdapter`, `WorkItem`, `UpdateItemInput`, etc.) |
 | `src/adapters/filesystem.ts` | All I/O logic — the only `WcpAdapter` implementation. Read/write/query operations on markdown files |
-| `src/index.ts` | MCP server setup — 12 tool handlers, each a thin pass-through to the adapter |
+| `src/index.ts` | MCP server setup — tool handlers, each a thin pass-through to the adapter |
 | `src/parser.ts` | `parseWorkItem()` / `serializeWorkItem()` — markdown ↔ frontmatter/body/activity round-trip |
 | `src/schema.ts` | `resolveSchema()` — merges global defaults with namespace extensions. Called on every write |
 | `src/validation.ts` | Field validators — `validateStatus()`, `validatePriority()`, `validateType()`, `validateArtifactType()`, `validateVerdict()` |
@@ -131,10 +131,8 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 |-----------|----------|
 | `src/` | All source and test files (flat structure) |
 | `src/adapters/` | Adapter implementations (`filesystem.ts`) |
-| `src/prompts/` | `/work` prompt infrastructure — stage detection, helpers, orchestrator, 8 stage prompt builders |
 | `src/smoke-test.ts` | Main smoke test suite |
 | `src/status-transition-test.ts` | Status transition auto-log tests (WCP-9) |
-| `src/work-prompt-test.ts` | `/work` prompt and stage detection tests (WCP-11) |
 | `dist/` | Compiled JavaScript output |
 
 ### Test Conventions
@@ -145,7 +143,6 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **Error testing:** Use try/catch blocks, assert on `e.code` values (`"NOT_FOUND"`, `"VALIDATION_ERROR"`, `"NAMESPACE_NOT_FOUND"`).
 - **String assertions:** Use `includes()` for activity log content, not strict equality. This avoids brittle tests when new entries are appended.
 - **Artifact frontmatter:** `gray-matter` handles round-trip parsing of artifact YAML frontmatter. `matter(content)` → `{ data, content }`, `matter.stringify(content, data)` recombines. Works cleanly even on files with no existing frontmatter (adds `---` header).
-- **Timestamp comparison:** `gray-matter` (via `js-yaml`) auto-parses unquoted ISO 8601 strings in YAML as JavaScript `Date` objects. The `>` operator on `Date` objects uses `valueOf()` (epoch ms), making comparisons timezone-safe regardless of offset format. This is why `detectPipelineStage()` can safely compare `completedAt` fields from different sources.
 - **Schema mutation tests:** Use `addNamespaceStatuses()` / `removeNamespaceStatuses()` directly, with cleanup in `finally` blocks.
 - **New test files** should follow the `smoke-test.ts` pattern exactly — same `check()` helper, same structure, same exit behavior.
 
@@ -154,8 +151,3 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - All internal imports use `.js` extension (required by Node16 module resolution): `import { foo } from "./bar.js"`
 - Type-only imports use `import type { ... }` syntax
 
-### MCP SDK Conventions
-
-- **Prompt registration:** `server.registerPrompt(name, config, callback)` — callback returns `GetPromptResult` with `messages: PromptMessage[]`
-- **SDK type compatibility:** `GetPromptResult` and `PromptMessage` require `[key: string]: unknown` index signature. Define local interfaces with this signature rather than importing SDK types directly to avoid coupling.
-- **Embedded resources:** Use `{ type: "resource", resource: { uri, mimeType, text } }` for embedding work item and artifact content in prompt messages. `wcp://` URIs are metadata strings — no registered MCP resources required.

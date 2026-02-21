@@ -18,17 +18,7 @@ export const DEFAULT_SCHEMA: SchemaConfig = {
   status: ["backlog", "todo", "in_progress", "in_review", "done", "cancelled"],
   priority: ["urgent", "high", "medium", "low"],
   type: ["feature", "bug", "chore", "spike"],
-  artifact_type: [
-    "prd",
-    "discovery",
-    "architecture",
-    "adr",
-    "gameplan",
-    "plan",
-    "test-matrix",
-    "review",
-    "qa-plan",
-  ],
+  artifact_type: ["adr", "plan"],
 };
 
 export interface NamespaceConfig {

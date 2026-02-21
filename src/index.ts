@@ -14,7 +14,7 @@ import {
   addNamespaceArtifactTypes,
   removeNamespaceArtifactTypes,
 } from "./schema.js";
-import { workPromptHandler } from "./prompts/work.js";
+
 
 const DATA_PATH =
   process.env.WCP_DATA_PATH ||
@@ -81,17 +81,9 @@ Use wcp_schema for the authoritative list. Defaults:
 - **status**: backlog, todo, in_progress, in_review, done, cancelled (extensible per namespace)
 - **priority**: urgent, high, medium, low (fixed)
 - **type**: feature, bug, chore, spike (fixed)
-- **artifact types**: prd, discovery, architecture, adr, gameplan, plan, test-matrix, review, qa-plan (extensible per namespace)
+- **artifact types**: adr, plan (extensible per namespace via wcp_schema_update)
 
-## Artifact Convention
-
-When running a multi-stage pipeline (e.g., PRD → discovery → architecture → gameplan → implementation), attach each document as an artifact:
-- wcp_attach with filename "prd.md", type "prd"
-- wcp_attach with filename "discovery-report.md", type "discovery"
-- wcp_attach with filename "architecture-proposal.md", type "architecture"
-- wcp_attach with filename "gameplan.md", type "gameplan"
-
-Use wcp_comment to log stage transitions and decisions in the activity log.`,
+Artifact types are intentionally minimal. Use wcp_schema_update to add domain-specific types (e.g., "prd", "architecture", "discovery") per namespace.`,
   },
 );
 
@@ -456,22 +448,6 @@ server.tool(
       if (err instanceof WcpError) return errorResponse(err);
       throw err;
     }
-  },
-);
-
-// --- /work prompt ---
-server.registerPrompt(
-  "work",
-  {
-    title: "Work on item",
-    description:
-      "Determines the next pipeline stage for a work item and provides context-loaded instructions.",
-    argsSchema: {
-      id: z.string().describe("Work item callsign, e.g. 'PIPE-3'"),
-    },
-  },
-  async ({ id }) => {
-    return workPromptHandler(adapter, id);
   },
 );
 
