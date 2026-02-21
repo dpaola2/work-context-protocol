@@ -7,12 +7,16 @@ import { SSEBroker } from "./sse.js";
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const DB_PATH = process.env.WCP_DB_PATH || "wcp.db";
+const API_KEY = process.env.WCP_API_KEY;
 
 console.error(`[wcp] Database: ${DB_PATH}`);
+if (!API_KEY) {
+  console.error("[wcp] WARNING: WCP_API_KEY not set — authentication disabled. Set WCP_API_KEY to enable auth.");
+}
 const db = initDatabase(DB_PATH);
 const adapter = new SqliteAdapter(db);
 const broker = new SSEBroker();
-const app = createApp(adapter, broker);
+const app = createApp(adapter, broker, API_KEY);
 
 // Serve static files from public directory
 app.use("/*", serveStatic({ root: "./packages/server/public" }));

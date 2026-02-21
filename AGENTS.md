@@ -185,6 +185,10 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **SSE broker:** `SSEBroker` in `sse.ts` manages connected clients via `ReadableStreamDefaultController`. Mutation route handlers call `broker.emit(event, data)` after successful operations. Events: `item_created`, `item_updated`, `namespace_created`, `namespace_updated`, `schema_updated`.
 - **Static file serving:** `@hono/node-server/serve-static` with `root: "./packages/server/public"` (relative to CWD). Registered after API routes so `/api/*` takes priority.
 - **SSE test command:** Start server first (same as server test), then `npx tsx src/sse-test.ts`
+- **Auth middleware:** Bearer token via `WCP_API_KEY` env var. If set, all `/api/*` requests require `Authorization: Bearer <key>`. SSE endpoint also accepts `?token=<key>` query param (EventSource doesn't support custom headers). If `WCP_API_KEY` is unset, auth is disabled and server logs a warning on startup.
+- **Auth test command:** `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db WCP_API_KEY=test-key npx tsx packages/server/src/index.ts &` then `WCP_TEST_API_KEY=test-key npx tsx src/sse-test.ts`
+- **Migration script:** `npx tsx packages/server/src/migrate-fs.ts --source <data-path> --db <sqlite-path>` reads config.yaml + .md files + artifact companion directories and INSERTs into SQLite. Idempotent via `INSERT OR REPLACE`. Uses `gray-matter` for parsing (same as filesystem adapter).
+- **gray-matter Date coercion:** `gray-matter` auto-parses ISO timestamps in YAML frontmatter as JavaScript Date objects. When binding to SQLite (which only accepts strings/numbers/null), always coerce with `String()` — e.g., `String(parsed.data.pipeline_approved_at)`.
 
 ### Import Conventions
 

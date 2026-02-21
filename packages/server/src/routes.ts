@@ -1,4 +1,5 @@
 import { Hono } from "hono";
+import type { Context, Next } from "hono";
 import { SqliteAdapter } from "./adapter.js";
 import { SSEBroker } from "./sse.js";
 import {
@@ -6,7 +7,7 @@ import {
   parseCallsign,
 } from "@wcp/shared";
 
-export function createApp(adapter: SqliteAdapter, broker: SSEBroker): Hono {
+export function createApp(adapter: SqliteAdapter, broker: SSEBroker, apiKey?: string): Hono {
   const app = new Hono();
 
   // Global error handler — maps WCP errors to HTTP status codes
@@ -24,6 +25,24 @@ export function createApp(adapter: SqliteAdapter, broker: SSEBroker): Hono {
     console.error("[wcp] Unexpected error:", err);
     return c.json({ error: "INTERNAL_ERROR", message }, 500);
   });
+
+  // --- Auth middleware ---
+
+  if (apiKey) {
+    app.use("/api/*", async (c: Context, next: Next) => {
+      // SSE endpoint accepts token as query param
+      if (c.req.path === "/api/events") {
+        const queryToken = c.req.query("token");
+        if (queryToken === apiKey) return next();
+      }
+
+      const authHeader = c.req.header("Authorization");
+      if (!authHeader || authHeader !== `Bearer ${apiKey}`) {
+        return c.json({ error: "UNAUTHORIZED", message: "Invalid or missing API key" }, 401);
+      }
+      return next();
+    });
+  }
 
   // --- SSE endpoint ---
 
