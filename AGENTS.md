@@ -135,7 +135,7 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 | Assertion pattern | `check(label, condition, detail?)` helper function |
 | Syntax check | `npx tsc --noEmit` |
 | Package manager | npm |
-| Key dependencies | `@modelcontextprotocol/sdk`, `gray-matter`, `zod` |
+| Key dependencies | `@modelcontextprotocol/sdk`, `gray-matter`, `zod`, `hono`, `better-sqlite3` |
 
 ### Directory Structure
 
@@ -148,7 +148,10 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 | `packages/mcp/src/status-transition-test.ts` | Status transition auto-log tests (WCP-9) |
 | `packages/mcp/src/approve-test.ts` | Approval tool tests (WCP-11) |
 | `packages/mcp/src/adapter-expansion-test.ts` | Adapter expansion tests (WCP-19 M1) |
-| `packages/server/src/` | Server API source (future — scaffold only) |
+| `packages/server/src/` | Server API: Hono REST + SQLite via `better-sqlite3` |
+| `packages/server/src/db.ts` | SQLite init, WAL mode, schema v1, forward-only migration runner |
+| `packages/server/src/adapter.ts` | `SqliteAdapter` — all 12 `WcpAdapter` methods via SQL |
+| `packages/server/src/routes.ts` | Hono route handlers for all API endpoints |
 | `packages/*/dist/` | Compiled JavaScript output per package |
 
 ### Test Conventions
@@ -161,6 +164,14 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **Artifact frontmatter:** `gray-matter` handles round-trip parsing of artifact YAML frontmatter. `matter(content)` → `{ data, content }`, `matter.stringify(content, data)` recombines. Works cleanly even on files with no existing frontmatter (adds `---` header).
 - **Schema mutation tests:** Use `addNamespaceStatuses()` / `removeNamespaceStatuses()` directly, with cleanup in `finally` blocks.
 - **New test files** should follow the `smoke-test.ts` pattern exactly — same `check()` helper, same structure, same exit behavior.
+
+### Server Conventions
+
+- **Hono error handling:** Global `app.onError()` maps `WcpError` subclass codes to HTTP status codes (NOT_FOUND/NAMESPACE_NOT_FOUND → 404, VALIDATION_ERROR → 400). Route handlers throw freely — no per-route try/catch.
+- **SqliteAdapter schema resolution:** Cannot reuse shared `resolveSchema()` (expects `WcpConfig` object). Instead, queries `namespace_schema_extensions` table and builds `ResolvedSchema` from `DEFAULT_SCHEMA` + extension rows.
+- **Artifact approval content:** The `approveArtifact` method modifies stored content to include YAML frontmatter with `approval` and `pipeline_approved_at` fields (matching filesystem adapter behavior) — no `gray-matter` dependency, uses simple string manipulation.
+- **`DEFAULT_SCHEMA.artifact_type`** includes all standard WCP types (prd, discovery, architecture, adr, gameplan, plan, test-matrix, review, qa-plan). The filesystem adapter's config.yaml previously overrode the incomplete defaults.
+- **Server test command:** `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db npx tsx packages/server/src/index.ts &` then `npx tsx src/server-api-test.ts`
 
 ### Import Conventions
 

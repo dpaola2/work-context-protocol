@@ -8,9 +8,13 @@
     "build": "tsc"
   },
   "dependencies": {
-    "@wcp/shared": "*"
+    "@wcp/shared": "*",
+    "hono": "^4.0.0",
+    "@hono/node-server": "^1.0.0",
+    "better-sqlite3": "^11.0.0"
   },
   "devDependencies": {
+    "@types/better-sqlite3": "^7.0.0",
     "@types/node": "^22.0.0",
     "typescript": "^5.9.0"
   }
