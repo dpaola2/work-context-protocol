@@ -143,7 +143,7 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 |-----------|----------|
 | `packages/shared/src/` | Shared types, errors, validation, schema (zero runtime deps) |
 | `packages/mcp/src/` | MCP server source and test files |
-| `packages/mcp/src/adapters/` | Adapter implementations (`filesystem.ts`) |
+| `packages/mcp/src/adapters/` | Adapter implementations (`filesystem.ts`, `http.ts`) |
 | `packages/mcp/src/smoke-test.ts` | Main smoke test suite |
 | `packages/mcp/src/status-transition-test.ts` | Status transition auto-log tests (WCP-9) |
 | `packages/mcp/src/approve-test.ts` | Approval tool tests (WCP-11) |
@@ -164,6 +164,14 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **Artifact frontmatter:** `gray-matter` handles round-trip parsing of artifact YAML frontmatter. `matter(content)` → `{ data, content }`, `matter.stringify(content, data)` recombines. Works cleanly even on files with no existing frontmatter (adds `---` header).
 - **Schema mutation tests:** Use `addNamespaceStatuses()` / `removeNamespaceStatuses()` directly, with cleanup in `finally` blocks.
 - **New test files** should follow the `smoke-test.ts` pattern exactly — same `check()` helper, same structure, same exit behavior.
+
+### HTTP Adapter Conventions
+
+- **Adapter selection:** `WCP_ADAPTER` env var (`filesystem` default, `http` for remote). `WCP_ADAPTER=http` requires `WCP_SERVER_URL`.
+- **HttpAdapter is stateless:** No caching, no retry logic, no local state. Every adapter call = one HTTP request.
+- **Error reconstruction:** Server error responses (`{ error, message }` with HTTP status codes) are mapped back to typed WcpError subclasses. Network failures throw `WcpError` with code `CONNECTION_ERROR`.
+- **Schema field name mapping:** The adapter translates `addStatuses` → `add_statuses` (camelCase → snake_case) in the request body to match the server's API contract.
+- **HTTP adapter test command:** Start server first: `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db npx tsx packages/server/src/index.ts &` then `npx tsx src/http-adapter-test.ts`
 
 ### Server Conventions
 

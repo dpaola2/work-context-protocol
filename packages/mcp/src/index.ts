@@ -4,6 +4,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { z } from "zod";
 import { FilesystemAdapter } from "./adapters/filesystem.js";
+import { HttpAdapter } from "./adapters/http.js";
 import type { WcpAdapter } from "@wcp/shared";
 import { WcpError } from "@wcp/shared";
 
@@ -36,8 +37,18 @@ function createAdapter(): WcpAdapter {
   switch (adapterType) {
     case "filesystem":
       return new FilesystemAdapter(DATA_PATH);
+    case "http": {
+      const serverUrl = process.env.WCP_SERVER_URL;
+      if (!serverUrl) {
+        throw new Error(
+          "WCP_ADAPTER=http requires WCP_SERVER_URL to be set.\n" +
+          "Example: WCP_SERVER_URL=http://localhost:3000",
+        );
+      }
+      return new HttpAdapter(serverUrl, process.env.WCP_API_KEY);
+    }
     default:
-      throw new Error(`Unknown WCP_ADAPTER: ${adapterType}. Valid: filesystem`);
+      throw new Error(`Unknown WCP_ADAPTER: ${adapterType}. Valid: filesystem, http`);
   }
 }
 
