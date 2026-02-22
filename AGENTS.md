@@ -10,20 +10,32 @@ WCP (Work Context Protocol) is an MCP server that provides structured work item 
 
 ## Architecture
 
+### Monorepo Structure
+
+WCP is organized as an npm workspace monorepo with TypeScript project references:
+
+| Package | Path | Purpose |
+|---------|------|---------|
+| `@wcp/shared` | `packages/shared/` | Types, errors, validation, schema logic — zero runtime deps |
+| `@wcp/mcp` | `packages/mcp/` | MCP server, FilesystemAdapter, config YAML I/O, parser |
+| `@wcp/server` | `packages/server/` | SQLite REST API + web UI (future — scaffold only) |
+
+Build order is enforced by `tsconfig.json` project references (`tsc -b` builds shared → mcp/server).
+
 ### Key Files
 
 | File | Purpose |
 |------|---------|
-| `src/adapter.ts` | Protocol contract — all TypeScript interfaces (`WcpAdapter`, `WorkItem`, `UpdateItemInput`, etc.) |
-| `src/adapters/filesystem.ts` | All I/O logic — the only `WcpAdapter` implementation. Read/write/query operations on markdown files |
-| `src/index.ts` | MCP server setup — tool handlers, each a thin pass-through to the adapter |
-| `src/parser.ts` | `parseWorkItem()` / `serializeWorkItem()` — markdown ↔ frontmatter/body/activity round-trip |
-| `src/schema.ts` | `resolveSchema()` — merges global defaults with namespace extensions. Called on every write |
-| `src/validation.ts` | Field validators — `validateStatus()`, `validatePriority()`, `validateType()`, `validateArtifactType()`, `validateVerdict()` |
-| `src/utils.ts` | `parseCallsign()`, `today()` (date-only), `now()` (ISO 8601 with ms) |
-| `src/errors.ts` | Error hierarchy — `WcpError` → `NotFoundError`, `NamespaceNotFoundError`, `ValidationError` |
-| `src/config.ts` | `readConfig()` / `writeConfig()` for `.wcp/config.yaml` |
-| `src/seed.ts` | Data seeding script |
+| `packages/shared/src/types.ts` | Protocol contract — all interfaces (`WcpAdapter`, `WorkItem`, `Namespace`, schema types, config types) |
+| `packages/shared/src/errors.ts` | Error hierarchy — `WcpError` → `NotFoundError`, `NamespaceNotFoundError`, `ValidationError` |
+| `packages/shared/src/validation.ts` | Field validators — `validateStatus()`, `validatePriority()`, `validateType()`, `validateArtifactType()`, `validateVerdict()` |
+| `packages/shared/src/schema.ts` | `resolveSchema()` — merges global defaults with namespace extensions. Schema mutation functions |
+| `packages/shared/src/utils.ts` | `parseCallsign()`, `today()` (date-only), `now()` (ISO 8601 with ms) |
+| `packages/mcp/src/adapters/filesystem.ts` | All I/O logic — the only `WcpAdapter` implementation. All 12 adapter methods |
+| `packages/mcp/src/index.ts` | MCP server setup — tool handlers, each a thin pass-through to the adapter |
+| `packages/mcp/src/parser.ts` | `parseWorkItem()` / `serializeWorkItem()` — markdown ↔ frontmatter/body/activity round-trip |
+| `packages/mcp/src/config.ts` | `readConfig()` / `writeConfig()` for `.wcp/config.yaml` |
+| `packages/mcp/src/seed.ts` | Data seeding script |
 
 ### Design Principles
 
@@ -106,9 +118,9 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 |-------|-------|
 | Default branch | `main` |
 | Branch prefix | `pipeline/` |
-| Test command | `npx tsx src/smoke-test.ts` |
-| Syntax check command | `npx tsc --noEmit` |
-| Build command | `npx tsc` |
+| Test command | `npx tsx packages/mcp/src/smoke-test.ts` |
+| Syntax check command | `npx tsc -b --noEmit` |
+| Build command | `npx tsc -b` |
 | Remote | `git@github.com:dpaola2/work-context-protocol.git` |
 
 ### Framework & Stack
@@ -123,17 +135,26 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 | Assertion pattern | `check(label, condition, detail?)` helper function |
 | Syntax check | `npx tsc --noEmit` |
 | Package manager | npm |
-| Key dependencies | `@modelcontextprotocol/sdk`, `gray-matter`, `zod` |
+| Key dependencies | `@modelcontextprotocol/sdk`, `gray-matter`, `zod`, `hono`, `better-sqlite3` |
 
 ### Directory Structure
 
 | Directory | Contents |
 |-----------|----------|
-| `src/` | All source and test files (flat structure) |
-| `src/adapters/` | Adapter implementations (`filesystem.ts`) |
-| `src/smoke-test.ts` | Main smoke test suite |
-| `src/status-transition-test.ts` | Status transition auto-log tests (WCP-9) |
-| `dist/` | Compiled JavaScript output |
+| `packages/shared/src/` | Shared types, errors, validation, schema (zero runtime deps) |
+| `packages/mcp/src/` | MCP server source and test files |
+| `packages/mcp/src/adapters/` | Adapter implementations (`filesystem.ts`, `http.ts`) |
+| `packages/mcp/src/smoke-test.ts` | Main smoke test suite |
+| `packages/mcp/src/status-transition-test.ts` | Status transition auto-log tests (WCP-9) |
+| `packages/mcp/src/approve-test.ts` | Approval tool tests (WCP-11) |
+| `packages/mcp/src/adapter-expansion-test.ts` | Adapter expansion tests (WCP-19 M1) |
+| `packages/server/src/` | Server API: Hono REST + SQLite via `better-sqlite3` |
+| `packages/server/src/db.ts` | SQLite init, WAL mode, schema v1, forward-only migration runner |
+| `packages/server/src/adapter.ts` | `SqliteAdapter` — all 12 `WcpAdapter` methods via SQL |
+| `packages/server/src/routes.ts` | Hono route handlers for all API endpoints + SSE |
+| `packages/server/src/sse.ts` | `SSEBroker` — in-process pub/sub for SSE event distribution |
+| `packages/server/public/` | Web UI static files (HTML + vanilla JS + CSS) |
+| `packages/*/dist/` | Compiled JavaScript output per package |
 
 ### Test Conventions
 
@@ -146,8 +167,35 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **Schema mutation tests:** Use `addNamespaceStatuses()` / `removeNamespaceStatuses()` directly, with cleanup in `finally` blocks.
 - **New test files** should follow the `smoke-test.ts` pattern exactly — same `check()` helper, same structure, same exit behavior.
 
+### HTTP Adapter Conventions
+
+- **Adapter selection:** `WCP_ADAPTER` env var (`filesystem` default, `http` for remote). `WCP_ADAPTER=http` requires `WCP_SERVER_URL`.
+- **HttpAdapter is stateless:** No caching, no retry logic, no local state. Every adapter call = one HTTP request.
+- **Error reconstruction:** Server error responses (`{ error, message }` with HTTP status codes) are mapped back to typed WcpError subclasses. Network failures throw `WcpError` with code `CONNECTION_ERROR`.
+- **Schema field name mapping:** The adapter translates `addStatuses` → `add_statuses` (camelCase → snake_case) in the request body to match the server's API contract.
+- **Non-JSON response handling:** `res.json()` is wrapped in try/catch — if the server returns non-JSON (proxy HTML errors, truncated responses), the adapter throws `CONNECTION_ERROR` with the server URL and HTTP status code.
+- **HTTP adapter test command:** Start server first: `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db npx tsx packages/server/src/index.ts &` then `npx tsx src/http-adapter-test.ts`
+
+### Server Conventions
+
+- **Hono error handling:** Global `app.onError()` maps `WcpError` subclass codes to HTTP status codes (NOT_FOUND/NAMESPACE_NOT_FOUND → 404, VALIDATION_ERROR → 400). Route handlers throw freely — no per-route try/catch.
+- **SqliteAdapter schema resolution:** Cannot reuse shared `resolveSchema()` (expects `WcpConfig` object). Instead, queries `namespace_schema_extensions` table and builds `ResolvedSchema` from `DEFAULT_SCHEMA` + extension rows.
+- **Artifact approval content:** The `approveArtifact` method modifies stored content to include YAML frontmatter with `approval` and `pipeline_approved_at` fields (matching filesystem adapter behavior) — no `gray-matter` dependency, uses simple string manipulation.
+- **`DEFAULT_SCHEMA.artifact_type`** includes all standard WCP types (prd, discovery, architecture, adr, gameplan, plan, test-matrix, review, qa-plan). The filesystem adapter's config.yaml previously overrode the incomplete defaults.
+- **Server test command:** `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db npx tsx packages/server/src/index.ts &` then `npx tsx src/server-api-test.ts`
+- **SSE broker:** `SSEBroker` in `sse.ts` manages connected clients via `ReadableStreamDefaultController`. Mutation route handlers call `broker.emit(event, data)` after successful operations. Events: `item_created`, `item_updated`, `namespace_created`, `namespace_updated`, `schema_updated`.
+- **All-items endpoint:** `GET /api/items` lists items across ALL namespaces. Uses `SqliteAdapter.listAllItems()` — a server-only method not part of the `WcpAdapter` interface. Supports the same query param filters as the namespace-scoped endpoint.
+- **Static file serving:** `@hono/node-server/serve-static` with `root: "./packages/server/public"` (relative to CWD). Registered after API routes so `/api/*` takes priority.
+- **SSE reconnect refetch:** The web UI tracks `sseHasConnected` to distinguish first connect from reconnection. On reconnect, it refetches the current view to catch events missed while disconnected.
+- **SSE test command:** Start server first (same as server test), then `npx tsx src/sse-test.ts`
+- **Auth middleware:** Bearer token via `WCP_API_KEY` env var. If set, all `/api/*` requests require `Authorization: Bearer <key>`. SSE endpoint also accepts `?token=<key>` query param (EventSource doesn't support custom headers). If `WCP_API_KEY` is unset, auth is disabled and server logs a warning on startup.
+- **Auth test command:** `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db WCP_API_KEY=test-key npx tsx packages/server/src/index.ts &` then `WCP_TEST_API_KEY=test-key npx tsx src/sse-test.ts`
+- **Migration script:** `npx tsx packages/server/src/migrate-fs.ts --source <data-path> --db <sqlite-path>` reads config.yaml + .md files + artifact companion directories and INSERTs into SQLite. Idempotent via `INSERT OR REPLACE`. Uses `gray-matter` for parsing (same as filesystem adapter).
+- **gray-matter Date coercion:** `gray-matter` auto-parses ISO timestamps in YAML frontmatter as JavaScript Date objects. When binding to SQLite (which only accepts strings/numbers/null), always coerce with `String()` — e.g., `String(parsed.data.pipeline_approved_at)`.
+
 ### Import Conventions
 
 - All internal imports use `.js` extension (required by Node16 module resolution): `import { foo } from "./bar.js"`
+- Cross-package imports use the package name: `import { WcpAdapter, validateStatus } from "@wcp/shared"`
 - Type-only imports use `import type { ... }` syntax
 

@@ -1,23 +1,164 @@
 # WCP — Work Context Protocol
 
-A standard way for AI agents to read and write project/task context, regardless of the underlying project management system. Markdown files in a git repo. No database. No business logic.
+A structured way for AI agents and humans to track work. Organize tasks into namespaces, attach documents, log activity, and query everything through 12 MCP tools. Two storage modes: local markdown files or a remote SQLite server with a live web dashboard.
+
+## Why WCP?
+
+AI agents need persistent context across sessions. They need to know what's been done, what's in progress, and what's next — not just for one conversation, but across an entire project. WCP gives agents (and humans) a shared workspace for tracking all of that: tasks, status, comments, attached documents, and history.
+
+**Without WCP:** Every agent session starts from scratch. Context lives in chat logs, scattered notes, or your head.
+
+**With WCP:** An agent picks up `PROJ-12`, reads the description, checks the activity log to see what the last agent did, updates the status, and leaves a comment for the next session.
+
+## Two modes
+
+| Mode | Best for | Storage | Setup |
+|------|----------|---------|-------|
+| **Filesystem** (default) | Single machine, git-tracked, Obsidian-compatible | Markdown files in a directory | Point at a folder |
+| **Server** | Multiple machines, live web dashboard, no git sync | SQLite database over HTTP | Run the server, point MCP at it |
+
+You can start with filesystem mode and migrate to server mode later — there's a migration script that imports everything.
+
+## Quick start
+
+### Install
+
+```bash
+git clone https://github.com/dpaola2/work-context-protocol.git ~/projects/wcp
+cd ~/projects/wcp
+npm install
+npx tsc -b
+```
+
+### Option A: Filesystem mode (simplest)
+
+Set up a data directory:
+
+```bash
+mkdir -p ~/projects/wcp-data/.wcp
+```
+
+Add WCP to Claude Code:
+
+```bash
+claude mcp add wcp --scope user \
+  -e WCP_DATA_PATH=~/projects/wcp-data \
+  -- node ~/projects/wcp/packages/mcp/dist/index.js
+```
+
+Or add to your project's `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "wcp": {
+      "command": "node",
+      "args": ["/path/to/wcp/packages/mcp/dist/index.js"],
+      "env": {
+        "WCP_DATA_PATH": "/path/to/wcp-data"
+      }
+    }
+  }
+}
+```
+
+Then use `wcp_create_namespace` to create your first namespace — no manual config editing needed.
+
+### Option B: Server mode (multi-machine, web dashboard)
+
+Start the server:
+
+```bash
+WCP_DB_PATH=./wcp.db npx tsx packages/server/src/index.ts
+```
+
+The server creates a fresh SQLite database if it doesn't exist. Open http://localhost:3000 to see the web dashboard.
+
+Point your MCP server at it:
+
+```bash
+claude mcp add wcp --scope user \
+  -e WCP_ADAPTER=http \
+  -e WCP_SERVER_URL=http://localhost:3000 \
+  -- node ~/projects/wcp/packages/mcp/dist/index.js
+```
+
+Or in `.mcp.json`:
+
+```json
+{
+  "mcpServers": {
+    "wcp": {
+      "command": "node",
+      "args": ["/path/to/wcp/packages/mcp/dist/index.js"],
+      "env": {
+        "WCP_ADAPTER": "http",
+        "WCP_SERVER_URL": "http://localhost:3000"
+      }
+    }
+  }
+}
+```
+
+#### Authentication
+
+Set `WCP_API_KEY` on both the server and the MCP config to enable bearer token auth:
+
+```bash
+# Server
+WCP_API_KEY=your-secret WCP_DB_PATH=./wcp.db npx tsx packages/server/src/index.ts
+
+# MCP config — add to env block
+"WCP_API_KEY": "your-secret"
+```
+
+If `WCP_API_KEY` is not set, auth is disabled (convenient for local dev).
+
+#### Docker
+
+```bash
+docker build -t wcp-server -f packages/server/Dockerfile .
+docker run -p 3000:3000 -v wcp-data:/data -e WCP_API_KEY=your-secret wcp-server
+```
+
+SQLite data persists in the `/data` volume. Container restarts preserve all data.
+
+## Migrating from filesystem to server
+
+If you've been using filesystem mode and want to switch to the server:
+
+```bash
+npx tsx packages/server/src/migrate-fs.ts \
+  --source ~/projects/wcp-data \
+  --db ./wcp.db
+```
+
+This reads your `config.yaml`, all work item `.md` files, activity logs, and artifacts, and imports everything into SQLite. The script is idempotent — safe to re-run.
+
+Then start the server pointing at the migrated database:
+
+```bash
+WCP_DB_PATH=./wcp.db npx tsx packages/server/src/index.ts
+```
+
+Your filesystem data directory is not modified. You can keep using it as a backup or with Obsidian.
 
 ## How it works
 
-You organize work into **namespaces** — each namespace is a project or area of focus. Inside each namespace, work items are **markdown files** with YAML frontmatter for structured fields, a free-form body for description, and an append-only activity log. Every item gets a **callsign** like `PIPE-12` — a short, unique identifier that agents and humans use to reference it.
+You organize work into **namespaces** — each namespace is a project or area of focus. Inside each namespace, work items have YAML frontmatter for structured fields, a free-form body for description, and an append-only activity log. Every item gets a **callsign** like `PIPE-12` — a short, unique identifier that agents and humans use to reference it.
 
-AI agents interact with WCP through 12 MCP tools. They can list what needs doing, pick up a task, update its status as they work, leave comments about what they did, and attach documents. Humans can do the same — either through the agent, or by opening the markdown files directly in any editor (including Obsidian).
+AI agents interact with WCP through 12 MCP tools. They can list what needs doing, pick up a task, update its status as they work, leave comments about what they did, and attach documents.
 
 ### Concepts
 
 | Concept | What it is | Example |
 |---------|-----------|---------|
-| **Namespace** | A project or area of focus. Each one is a directory. | `PROJ` (My Project), `OPS` (Operations) |
-| **Work item** | A task, feature, bug, or spike. One markdown file. | `PROJ/PROJ-12.md` |
+| **Namespace** | A project or area of focus | `PROJ` (My Project), `OPS` (Operations) |
+| **Work item** | A task, feature, bug, or spike | `PROJ-12` |
 | **Callsign** | A unique ID: `{NAMESPACE}-{NUMBER}`. Auto-generated. | `PROJ-12`, `OPS-3`, `WCP-7` |
-| **Status** | Semantic label for where the item is. No enforced transitions. | `backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled` |
-| **Activity log** | Append-only history at the bottom of each item. | Comments from agents and humans with timestamps |
-| **Artifact** | A document attached to a work item. Stored in a companion directory. | `WCP-1/plan.md`, `WCP-1/ADR-001-adapter-pattern.md` |
+| **Status** | Where the item is. No enforced transitions. | `backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled` |
+| **Activity log** | Append-only history on each item | Comments from agents and humans with timestamps |
+| **Artifact** | A document attached to a work item | PRDs, architecture docs, plans, ADRs |
 
 ### What a work item looks like
 
@@ -28,7 +169,6 @@ title: Build WCP MVP
 status: in_progress
 priority: high
 type: feature
-project: wcp-mvp
 assignee: dave
 created: 2026-02-19
 updated: 2026-02-19
@@ -36,9 +176,6 @@ artifacts:
   - type: plan
     title: Implementation Plan
     url: WCP/WCP-1/plan.md
-  - type: adr
-    title: ADR-001 Adapter Pattern
-    url: WCP/WCP-1/ADR-001-adapter-pattern.md
 ---
 
 Build the MCP server that exposes WCP tools for reading and writing work items.
@@ -47,7 +184,6 @@ Build the MCP server that exposes WCP tools for reading and writing work items.
 
 - [x] 12 MCP tools functional
 - [x] Filesystem adapter with markdown storage
-- [ ] At least one real project tracked for 1 week
 
 ---
 
@@ -57,71 +193,21 @@ Build the MCP server that exposes WCP tools for reading and writing work items.
 Started sketching the schema.
 
 **claude** — 2026-02-19T10:57:00-05:00
-All 11 tools built. 41/41 tests passing.
+All 12 tools built. 84/84 tests passing.
 ```
 
-### Artifact storage
+### Schema
 
-Artifacts are stored in a **companion directory** next to the work item. `WCP-1.md` gets a `WCP-1/` directory:
+Statuses and artifact types are **extensible** per namespace. Priority and type are fixed.
 
-```
-WCP/
-├── WCP-1.md                         ← work item
-└── WCP-1/                           ← artifacts
-    ├── plan.md
-    ├── ADR-001-adapter-pattern.md
-    └── meeting-notes.md
-```
+| Field | Default values | Extensible? |
+|-------|---------------|-------------|
+| **status** | `backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled` | Yes |
+| **priority** | `urgent`, `high`, `medium`, `low` | No |
+| **type** | `feature`, `bug`, `chore`, `spike` | No |
+| **artifact_type** | `prd`, `discovery`, `architecture`, `adr`, `gameplan`, `plan`, `test-matrix`, `review`, `qa-plan` | Yes |
 
-Use `wcp_attach` to store artifacts and `wcp_get_artifact` to retrieve them. Artifacts are registered in the work item's frontmatter automatically.
-
-### Data directory structure
-
-All data lives in a **data directory** — a plain git repo, also a valid Obsidian vault.
-
-```
-wcp-data/
-├── .wcp/
-│   └── config.yaml                ← namespace definitions + counters
-├── WCP/
-│   ├── WCP-1.md
-│   └── WCP-1/
-│       ├── plan.md
-│       └── ADR-001-adapter-pattern.md
-├── PROJ/
-│   ├── PROJ-1.md
-│   └── PROJ-2.md
-└── OPS/
-    └── OPS-1.md
-```
-
-The config file defines your namespaces:
-
-```yaml
-# .wcp/config.yaml
-schema:
-  status: [backlog, todo, in_progress, in_review, done, cancelled]
-  priority: [urgent, high, medium, low]
-  type: [feature, bug, chore, spike]
-  artifact_type: [adr, plan]
-
-namespaces:
-  WCP:
-    name: Work Context Protocol
-    description: WCP development
-    next: 2
-  PROJ:
-    name: My Other Project
-    description: Another area of work
-    next: 3
-    schema:
-      statuses: [blocked]
-      artifact_types: [prd, architecture, runbook]
-```
-
-The `schema` block defines global defaults for field values. The `status` and `artifact_type` fields are **extensible** — namespaces can add their own values via per-namespace `schema` blocks (see `PROJ` above). The `priority` and `type` fields are fixed. If the top-level `schema` key is omitted, built-in defaults are used. Default artifact types are intentionally minimal (`adr`, `plan`) — add domain-specific types per namespace.
-
-The `next` counter tracks the next available number. WCP increments it on create. Use `wcp_schema` to discover valid values at runtime.
+Use `wcp_schema` to discover valid values at runtime. Use `wcp_schema_update` to add custom statuses or artifact types to a namespace.
 
 ## MCP tools
 
@@ -142,94 +228,85 @@ WCP exposes 12 tools via the Model Context Protocol:
 | `wcp_schema` | Discover valid field values | `namespace` (optional) |
 | `wcp_schema_update` | Extend statuses/artifact types | `namespace` (required), `add_statuses`, `remove_statuses`, `add_artifact_types`, `remove_artifact_types` |
 
-The server includes instructions that are sent to agents during the MCP handshake, so they understand how to use the tools without additional prompting.
+The MCP server includes instructions that are sent to agents during the handshake, so they understand how to use the tools without additional prompting.
 
-## Install
+## Web dashboard
 
-```bash
-git clone <repo-url> ~/projects/wcp
-cd ~/projects/wcp
-npm install
-npm run build
-```
+When running in server mode, open `http://localhost:3000` (or wherever you deployed it) to see a read-only web dashboard with:
 
-## Configure
+- **Namespace list** — all namespaces with item counts
+- **Item list** — filterable by status, priority, and type
+- **Item detail** — rendered markdown body, activity log, artifacts
+- **All items** — cross-namespace view with filters
+- **Live updates** — SSE-powered, no refresh needed. When an agent creates or updates an item via MCP, the dashboard updates automatically.
 
-### Global (all Claude Code sessions)
+The dashboard is read-only. All mutations go through MCP tools or the REST API.
 
-```bash
-claude mcp add wcp --scope user -e WCP_DATA_PATH=/path/to/wcp-data -- node /path/to/wcp/dist/index.js
-```
+## Testing
 
-### Per-project
-
-Add to your project's `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "wcp": {
-      "command": "node",
-      "args": ["/path/to/wcp/dist/index.js"],
-      "env": {
-        "WCP_DATA_PATH": "/path/to/wcp-data"
-      }
-    }
-  }
-}
-```
-
-## Set up a data directory
+### Automated tests (378 total)
 
 ```bash
-mkdir -p ~/projects/wcp-data/.wcp
-cd ~/projects/wcp-data
-git init
+# Filesystem adapter tests (no server needed)
+npx tsx packages/mcp/src/smoke-test.ts              # 84 tests
+npx tsx packages/mcp/src/status-transition-test.ts   # 26 tests
+npx tsx packages/mcp/src/approve-test.ts             # 35 tests
+npx tsx packages/mcp/src/adapter-expansion-test.ts   # 44 tests
+
+# Server tests (start a test server first)
+rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db npx tsx packages/server/src/index.ts &
+npx tsx src/server-api-test.ts                       # 110 tests
+npx tsx src/http-adapter-test.ts                     # 34 tests
+npx tsx src/sse-test.ts                              # 13 tests
+npx tsx src/migration-test.ts                        # 32 tests
 ```
 
-Create `.wcp/config.yaml` with your namespaces:
-
-```yaml
-namespaces:
-  MYPROJECT:
-    name: My Project
-    description: What this project is about
-    next: 1
-```
-
-Or use `wcp_create_namespace` to add namespaces without manually editing config.yaml — the tool creates the namespace entry and sets up the counter automatically.
-
-You can also use the seed script to create a starter directory:
+### Manual QA with seed data
 
 ```bash
-WCP_DATA_PATH=~/projects/wcp-data npm run seed
+rm -f /tmp/wcp-qa.db && WCP_DB_PATH=/tmp/wcp-qa.db npx tsx packages/server/src/seed-qa.ts
+WCP_DB_PATH=/tmp/wcp-qa.db npx tsx packages/server/src/index.ts
 ```
+
+This creates 3 test namespaces with 16 items covering all statuses, priorities, types, artifacts, activity logs, schema extensions, and parent/child relationships.
 
 ## Architecture
 
-WCP separates protocol from storage via an adapter pattern:
+WCP is organized as an npm workspaces monorepo:
+
+| Package | Path | Purpose |
+|---------|------|---------|
+| `@wcp/shared` | `packages/shared/` | Types, errors, validation, schema — zero runtime deps |
+| `@wcp/mcp` | `packages/mcp/` | MCP server + FilesystemAdapter + HttpAdapter |
+| `@wcp/server` | `packages/server/` | Hono REST API + SQLite + web dashboard |
+
+The adapter pattern separates protocol from storage:
 
 ```
-MCP Server (index.ts)
-  └── Tool Handlers (12 tools)
-        └── WcpAdapter (interface)
-              └── FilesystemAdapter (MVP)
-              └── LinearAdapter (future)
-              └── JiraAdapter (future)
+Claude Code / any MCP client
+  └── MCP Server (packages/mcp/src/index.ts)
+        └── 12 Tool Handlers
+              └── WcpAdapter interface (packages/shared/src/types.ts)
+                    ├── FilesystemAdapter → markdown files
+                    └── HttpAdapter → HTTP → WCP Server → SQLite
 ```
 
-- **Protocol** (`src/adapter.ts`) — the `WcpAdapter` interface defining operations and their types
-- **Filesystem adapter** (`src/adapters/filesystem.ts`) — reads/writes markdown + YAML frontmatter
-- **MCP server** (`src/index.ts`) — registers tools, wires them to the adapter, handles errors
+### Environment variables
 
-Future adapters implement the same `WcpAdapter` interface against different backends without changing any tool signatures.
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `WCP_ADAPTER` | `filesystem` | Adapter to use: `filesystem` or `http` |
+| `WCP_DATA_PATH` | — | Path to filesystem data directory (filesystem mode) |
+| `WCP_SERVER_URL` | — | Server URL (http mode, e.g. `http://localhost:3000`) |
+| `WCP_API_KEY` | — | Bearer token for auth (server + MCP config). Disabled if unset. |
+| `WCP_DB_PATH` | `wcp.db` | SQLite database path (server only) |
+| `PORT` | `3000` | Server listen port (server only) |
 
 ## Design principles
 
 1. **Evolve from working systems.** Build the tool. Use it. Extract the protocol from what works.
-2. **Keep it simple.** Markdown files. YAML frontmatter. That's it.
-3. **Contextualize work, don't just store it.** WCP's job isn't to be a database of work items. It's to organize the current state of a piece of work — description, status, activity history, attached documents — so whoever picks it up next has full context.
+2. **Keep it simple.** Markdown + YAML for filesystem. SQLite for server. No ORM, no framework magic.
+3. **Contextualize work, don't just store it.** WCP's job is to organize the current state of a piece of work — description, status, activity history, attached documents — so whoever picks it up next has full context.
 4. **Bidirectional.** Agents read context AND write back — status, comments, artifacts.
-5. **Markdown is the data format.** Human-readable, grep-able, Obsidian-compatible, git-trackable.
-6. **No enforced transitions.** Pure data layer. No automations, triggers, or enforced state machines.
-7. **No git operations.** WCP reads and writes files. Git commit/push is your concern.
+5. **No enforced transitions.** Pure data layer. No automations, triggers, or enforced state machines.
+6. **Compose, don't extend.** New use cases should be satisfied by reading existing data, not adding tools or fields to WCP.

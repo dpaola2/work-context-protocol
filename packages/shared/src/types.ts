@@ -1,3 +1,67 @@
+// --- Schema-related types ---
+
+export interface ExtensibleField {
+  defaults: string[];
+  extensions: string[];
+  all: string[];
+}
+
+export interface FixedField {
+  values: string[];
+}
+
+export interface ResolvedSchema {
+  status: ExtensibleField;
+  priority: FixedField;
+  type: FixedField;
+  artifact_type: ExtensibleField;
+}
+
+// --- Config types ---
+
+export interface NamespaceSchemaConfig {
+  statuses?: string[];
+  artifact_types?: string[];
+}
+
+export interface SchemaConfig {
+  status: string[];
+  priority: string[];
+  type: string[];
+  artifact_type: string[];
+}
+
+export const DEFAULT_SCHEMA: SchemaConfig = {
+  status: ["backlog", "todo", "in_progress", "in_review", "done", "cancelled"],
+  priority: ["urgent", "high", "medium", "low"],
+  type: ["feature", "bug", "chore", "spike"],
+  artifact_type: [
+    "prd",
+    "discovery",
+    "architecture",
+    "adr",
+    "gameplan",
+    "plan",
+    "test-matrix",
+    "review",
+    "qa-plan",
+  ],
+};
+
+export interface NamespaceConfig {
+  name: string;
+  description: string;
+  next: number;
+  schema?: NamespaceSchemaConfig;
+}
+
+export interface WcpConfig {
+  schema?: SchemaConfig;
+  namespaces: Record<string, NamespaceConfig>;
+}
+
+// --- Data types ---
+
 export interface Namespace {
   key: string;
   name: string;
@@ -81,6 +145,22 @@ export interface ApproveArtifactInput {
   verdict: string;
 }
 
+// --- New types for adapter expansion ---
+
+export interface SchemaUpdateInput {
+  addStatuses?: string[];
+  removeStatuses?: string[];
+  addArtifactTypes?: string[];
+  removeArtifactTypes?: string[];
+}
+
+export interface SchemaUpdateResult {
+  changes: Record<string, string[]>;
+  schema: ResolvedSchema;
+}
+
+// --- Adapter interface (expanded to 12 methods) ---
+
 export interface WcpAdapter {
   listNamespaces(): Promise<Namespace[]>;
   listItems(namespace: string, filters?: ItemFilters): Promise<ItemSummary[]>;
@@ -91,4 +171,7 @@ export interface WcpAdapter {
   attachArtifact(id: string, input: AttachArtifactInput): Promise<Artifact>;
   getArtifact(id: string, filename: string): Promise<ArtifactContent>;
   approveArtifact(id: string, input: ApproveArtifactInput): Promise<void>;
+  createNamespace(key: string, name: string, description: string): Promise<Namespace>;
+  getSchema(namespace?: string): Promise<ResolvedSchema>;
+  updateSchema(namespace: string, changes: SchemaUpdateInput): Promise<SchemaUpdateResult>;
 }

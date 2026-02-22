@@ -2,21 +2,20 @@ import * as fs from "fs";
 import * as path from "path";
 import yaml from "js-yaml";
 import { FilesystemAdapter } from "./adapters/filesystem.js";
-import { DEFAULT_SCHEMA, type WcpConfig } from "./config.js";
 import { readConfig, writeConfig } from "./config.js";
 import {
+  DEFAULT_SCHEMA,
+  type WcpConfig,
   resolveSchema,
   addNamespaceStatuses,
   removeNamespaceStatuses,
   addNamespaceArtifactTypes,
   removeNamespaceArtifactTypes,
-} from "./schema.js";
-import {
   validateStatus,
   validatePriority,
   validateType,
   validateArtifactType,
-} from "./validation.js";
+} from "@wcp/shared";
 
 const DATA_PATH =
   process.env.WCP_DATA_PATH ||

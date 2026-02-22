@@ -1,9 +1,8 @@
-import * as fs from "fs";
 import * as path from "path";
 import matter from "gray-matter";
 import { FilesystemAdapter } from "./adapters/filesystem.js";
-import type { ApproveArtifactInput } from "./adapter.js";
-import { validateVerdict } from "./validation.js";
+import type { ApproveArtifactInput } from "@wcp/shared";
+import { validateVerdict } from "@wcp/shared";
 
 const DATA_PATH =
   process.env.WCP_DATA_PATH ||

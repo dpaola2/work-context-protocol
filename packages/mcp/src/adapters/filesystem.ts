@@ -13,23 +13,30 @@ import type {
   AttachArtifactInput,
   ApproveArtifactInput,
   ItemFilters,
-} from "../adapter.js";
-import { readConfig, writeConfig } from "../config.js";
-import { parseWorkItem, serializeWorkItem } from "../parser.js";
-import { parseCallsign, today, now } from "../utils.js";
+  ResolvedSchema,
+  SchemaUpdateInput,
+  SchemaUpdateResult,
+} from "@wcp/shared";
 import {
+  NotFoundError,
+  NamespaceNotFoundError,
+  ValidationError,
+  resolveSchema,
+  addNamespaceStatuses,
+  removeNamespaceStatuses,
+  addNamespaceArtifactTypes,
+  removeNamespaceArtifactTypes,
   validateStatus,
   validatePriority,
   validateType,
   validateArtifactType,
   validateVerdict,
-} from "../validation.js";
-import { resolveSchema } from "../schema.js";
-import {
-  NotFoundError,
-  NamespaceNotFoundError,
-  ValidationError,
-} from "../errors.js";
+  parseCallsign,
+  today,
+  now,
+} from "@wcp/shared";
+import { readConfig, writeConfig } from "../config.js";
+import { parseWorkItem, serializeWorkItem } from "../parser.js";
 
 export class FilesystemAdapter implements WcpAdapter {
   constructor(private dataPath: string) {
@@ -504,5 +511,64 @@ export class FilesystemAdapter implements WcpAdapter {
     parsedItem.frontmatter.updated = today();
     const newItemContent = serializeWorkItem(parsedItem);
     fs.writeFileSync(itemPath, newItemContent, "utf-8");
+  }
+
+  // --- New methods (adapter expansion) ---
+
+  async createNamespace(key: string, name: string, description: string): Promise<Namespace> {
+    if (!/^[A-Z][A-Z0-9]*$/.test(key)) {
+      throw new ValidationError(
+        "namespace",
+        `Invalid namespace key '${key}'. Must be uppercase letters/numbers, starting with a letter (e.g. 'PROJ').`,
+      );
+    }
+
+    const config = readConfig(this.dataPath);
+    if (config.namespaces[key]) {
+      throw new ValidationError(
+        "namespace",
+        `Namespace '${key}' already exists.`,
+      );
+    }
+
+    config.namespaces[key] = { name, description, next: 1 };
+    writeConfig(this.dataPath, config);
+
+    return { key, name, description, itemCount: 0 };
+  }
+
+  async getSchema(namespace?: string): Promise<ResolvedSchema> {
+    const config = readConfig(this.dataPath);
+    if (namespace && !config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+    return resolveSchema(config, namespace);
+  }
+
+  async updateSchema(namespace: string, changes: SchemaUpdateInput): Promise<SchemaUpdateResult> {
+    const config = readConfig(this.dataPath);
+    if (!config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+
+    const result: Record<string, string[]> = {};
+
+    if (changes.addStatuses?.length) {
+      result.added_statuses = addNamespaceStatuses(config, namespace, changes.addStatuses);
+    }
+    if (changes.removeStatuses?.length) {
+      result.removed_statuses = removeNamespaceStatuses(config, namespace, changes.removeStatuses);
+    }
+    if (changes.addArtifactTypes?.length) {
+      result.added_artifact_types = addNamespaceArtifactTypes(config, namespace, changes.addArtifactTypes);
+    }
+    if (changes.removeArtifactTypes?.length) {
+      result.removed_artifact_types = removeNamespaceArtifactTypes(config, namespace, changes.removeArtifactTypes);
+    }
+
+    writeConfig(this.dataPath, config);
+
+    const schema = resolveSchema(config, namespace);
+    return { changes: result, schema };
   }
 }

@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+
+      - name: Type check & build
+        run: npx tsc -b
+
+      - name: Seed test data
+        run: |
+          npx tsx packages/mcp/src/seed.ts
+          node -e "
+            const fs = require('fs');
+            const yaml = require('js-yaml');
+            const cfgPath = process.env.WCP_DATA_PATH + '/.wcp/config.yaml';
+            const config = yaml.load(fs.readFileSync(cfgPath, 'utf-8'));
+            config.namespaces.TEST = { name: 'Test', description: 'Smoke test namespace', next: 1 };
+            fs.writeFileSync(cfgPath, yaml.dump(config), 'utf-8');
+          "
+        env:
+          WCP_DATA_PATH: ${{ runner.temp }}/wcp-data
+
+      - name: Smoke tests
+        run: npx tsx packages/mcp/src/smoke-test.ts
+        env:
+          WCP_DATA_PATH: ${{ runner.temp }}/wcp-data
