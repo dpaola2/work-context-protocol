@@ -79,8 +79,32 @@ function badge(type, value) {
 
 // ── Navigation ───────────────────────────────────────────────────────────
 
-function navigate(view) {
+function viewToHash(view) {
+  if (view.type === "namespaces") return "#/";
+  if (view.type === "all-items") return "#/all";
+  if (view.type === "items") return "#/" + view.namespace;
+  if (view.type === "item") return "#/" + view.namespace + "/" + view.id;
+  return "#/";
+}
+
+function hashToView(hash) {
+  const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  if (parts.length === 0) return { type: "namespaces" };
+  if (parts[0] === "all") return { type: "all-items" };
+  if (parts.length === 1) return { type: "items", namespace: parts[0] };
+  return { type: "item", namespace: parts[0], id: parts[1] };
+}
+
+function navigate(view, { pushHistory = true } = {}) {
   currentView = view;
+
+  if (pushHistory) {
+    const newHash = viewToHash(view);
+    if (window.location.hash !== newHash) {
+      history.pushState(view, "", newHash);
+    }
+  }
+
   const bc = $("#breadcrumb");
   bc.innerHTML = "";
 
@@ -513,6 +537,27 @@ function connectSSE() {
 // ── Init ─────────────────────────────────────────────────────────────────
 
 document.addEventListener("DOMContentLoaded", () => {
-  navigate({ type: "namespaces" });
+  // Wire up brand/logo link to go home
+  const brand = $(".brand");
+  if (brand) {
+    brand.addEventListener("click", (e) => {
+      e.preventDefault();
+      navigate({ type: "namespaces" });
+    });
+  }
+
+  // Handle browser back/forward buttons
+  window.addEventListener("popstate", (e) => {
+    const view = e.state || hashToView(window.location.hash);
+    navigate(view, { pushHistory: false });
+  });
+
+  // Restore view from URL hash on load, or default to namespaces
+  const initialView = window.location.hash
+    ? hashToView(window.location.hash)
+    : { type: "namespaces" };
+  navigate(initialView, { pushHistory: false });
+  history.replaceState(initialView, "", viewToHash(initialView));
+
   connectSSE();
 });
