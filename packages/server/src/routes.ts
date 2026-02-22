@@ -87,6 +87,24 @@ export function createApp(adapter: SqliteAdapter, broker: SSEBroker, apiKey?: st
 
   // --- Item endpoints ---
 
+  // --- All items across namespaces (UI-009) ---
+
+  app.get("/api/items", async (c) => {
+    const query = c.req.query();
+    const filters: Record<string, string> = {};
+    if (query.status) filters.status = query.status;
+    if (query.priority) filters.priority = query.priority;
+    if (query.type) filters.type = query.type;
+    if (query.project) filters.project = query.project;
+    if (query.assignee) filters.assignee = query.assignee;
+    if (query.parent) filters.parent = query.parent;
+
+    const items = adapter.listAllItems(
+      Object.keys(filters).length ? filters : undefined,
+    );
+    return c.json({ items, count: items.length });
+  });
+
   app.get("/api/namespaces/:namespace/items", async (c) => {
     const namespace = c.req.param("namespace");
     const query = c.req.query();

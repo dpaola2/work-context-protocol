@@ -5,6 +5,7 @@ const INITIAL_ACTIVITY_COUNT = 10;
 
 let currentView = { type: "namespaces" };
 let eventSource = null;
+let sseHasConnected = false;
 
 // ── API helpers ──────────────────────────────────────────────────────────
 
@@ -85,6 +86,9 @@ function navigate(view) {
 
   if (view.type === "namespaces") {
     renderNamespaces();
+  } else if (view.type === "all-items") {
+    bc.appendChild(document.createTextNode(" / All Items"));
+    renderAllItems(view.filters);
   } else if (view.type === "items") {
     bc.appendChild(document.createTextNode(" / "));
     const link = h("a", { href: "#", onclick: (e) => { e.preventDefault(); navigate({ type: "items", namespace: view.namespace }); } }, view.namespace);
@@ -107,14 +111,23 @@ async function renderNamespaces() {
 
   try {
     const data = await api("/api/namespaces");
+    app.innerHTML = "";
+
     if (!data.namespaces || data.namespaces.length === 0) {
-      app.innerHTML = "";
       app.appendChild(h("div", { class: "empty-state" },
         h("h3", null, "No namespaces yet"),
         h("p", null, "Create a namespace using the MCP tools to get started.")
       ));
       return;
     }
+
+    // "All Items" link
+    const allLink = h("a", {
+      class: "all-items-link",
+      href: "#",
+      onclick: (e) => { e.preventDefault(); navigate({ type: "all-items" }); }
+    }, "View all items across namespaces");
+    app.appendChild(allLink);
 
     const list = h("div", { class: "namespace-list" });
     for (const ns of data.namespaces) {
@@ -134,13 +147,109 @@ async function renderNamespaces() {
       );
       list.appendChild(card);
     }
-    app.innerHTML = "";
     app.appendChild(list);
   } catch (err) {
     if (err.message !== "Unauthorized") {
       app.innerHTML = '<div class="empty-state"><h3>Failed to load</h3><p>' + err.message + "</p></div>";
     }
   }
+}
+
+// ── All items view (cross-namespace) ─────────────────────────────────────
+
+async function renderAllItems(filters) {
+  const app = $("#app");
+  app.innerHTML = '<div class="loading">Loading all items...</div>';
+
+  try {
+    let query = "";
+    if (filters) {
+      const params = new URLSearchParams();
+      for (const [k, v] of Object.entries(filters)) {
+        if (v) params.set(k, v);
+      }
+      const qs = params.toString();
+      if (qs) query = "?" + qs;
+    }
+
+    const data = await api("/api/items" + query);
+    app.innerHTML = "";
+
+    // Filter bar
+    const bar = h("div", { class: "filter-bar" });
+    const statusFilter = h("select", { onchange: () => applyAllItemsFilters() });
+    statusFilter.id = "filter-status";
+    statusFilter.appendChild(h("option", { value: "" }, "All statuses"));
+    for (const s of ["backlog", "todo", "in_progress", "in_review", "done", "cancelled"]) {
+      const opt = h("option", { value: s }, s);
+      if (filters?.status === s) opt.selected = true;
+      statusFilter.appendChild(opt);
+    }
+
+    const priorityFilter = h("select", { onchange: () => applyAllItemsFilters() });
+    priorityFilter.id = "filter-priority";
+    priorityFilter.appendChild(h("option", { value: "" }, "All priorities"));
+    for (const p of ["urgent", "high", "medium", "low"]) {
+      const opt = h("option", { value: p }, p);
+      if (filters?.priority === p) opt.selected = true;
+      priorityFilter.appendChild(opt);
+    }
+
+    const typeFilter = h("select", { onchange: () => applyAllItemsFilters() });
+    typeFilter.id = "filter-type";
+    typeFilter.appendChild(h("option", { value: "" }, "All types"));
+    for (const t of ["feature", "bug", "chore", "spike"]) {
+      const opt = h("option", { value: t }, t);
+      if (filters?.type === t) opt.selected = true;
+      typeFilter.appendChild(opt);
+    }
+
+    bar.appendChild(statusFilter);
+    bar.appendChild(priorityFilter);
+    bar.appendChild(typeFilter);
+    app.appendChild(bar);
+
+    if (!data.items || data.items.length === 0) {
+      app.appendChild(h("div", { class: "empty-state" },
+        h("h3", null, "No items"),
+        h("p", null, filters ? "No items match the current filters." : "No work items exist yet.")
+      ));
+      return;
+    }
+
+    const list = h("div", { class: "item-list" });
+    for (const item of data.items) {
+      const ns = item.id.split("-")[0];
+      const row = h("a", {
+        class: "item-row",
+        href: "#",
+        onclick: (e) => { e.preventDefault(); navigate({ type: "item", id: item.id, namespace: ns }); }
+      },
+        h("span", { class: "callsign" }, item.id),
+        h("span", { class: "title" }, item.title),
+        badge("status", item.status),
+        badge("priority", item.priority),
+        h("span", { class: "date" }, item.updated)
+      );
+      list.appendChild(row);
+    }
+    app.appendChild(list);
+  } catch (err) {
+    if (err.message !== "Unauthorized") {
+      app.innerHTML = '<div class="empty-state"><h3>Failed to load</h3><p>' + err.message + "</p></div>";
+    }
+  }
+}
+
+function applyAllItemsFilters() {
+  const filters = {};
+  const s = document.getElementById("filter-status");
+  const p = document.getElementById("filter-priority");
+  const t = document.getElementById("filter-type");
+  if (s && s.value) filters.status = s.value;
+  if (p && p.value) filters.priority = p.value;
+  if (t && t.value) filters.type = t.value;
+  navigate({ type: "all-items", filters: Object.keys(filters).length ? filters : undefined });
 }
 
 // ── Item list view ───────────────────────────────────────────────────────
@@ -269,6 +378,10 @@ async function renderItemDetail(id) {
       const bodyDiv = h("div", { class: "body" });
       bodyDiv.innerHTML = renderMarkdown(item.body);
       detail.appendChild(bodyDiv);
+    } else {
+      detail.appendChild(h("div", { class: "body empty-state", style: "padding: 16px 0; border-top: 1px solid var(--border);" },
+        h("p", null, "No description.")
+      ));
     }
 
     // Artifacts
@@ -373,6 +486,12 @@ function connectSSE() {
     const dot = $("#connection-status");
     dot.className = "status-dot connected";
     dot.title = "Connected";
+
+    // On reconnect (not first connection), refetch current view to catch up on missed events
+    if (sseHasConnected) {
+      navigate(currentView);
+    }
+    sseHasConnected = true;
   };
 
   eventSource.onerror = () => {

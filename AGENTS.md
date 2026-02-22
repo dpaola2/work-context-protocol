@@ -173,6 +173,7 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **HttpAdapter is stateless:** No caching, no retry logic, no local state. Every adapter call = one HTTP request.
 - **Error reconstruction:** Server error responses (`{ error, message }` with HTTP status codes) are mapped back to typed WcpError subclasses. Network failures throw `WcpError` with code `CONNECTION_ERROR`.
 - **Schema field name mapping:** The adapter translates `addStatuses` → `add_statuses` (camelCase → snake_case) in the request body to match the server's API contract.
+- **Non-JSON response handling:** `res.json()` is wrapped in try/catch — if the server returns non-JSON (proxy HTML errors, truncated responses), the adapter throws `CONNECTION_ERROR` with the server URL and HTTP status code.
 - **HTTP adapter test command:** Start server first: `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db npx tsx packages/server/src/index.ts &` then `npx tsx src/http-adapter-test.ts`
 
 ### Server Conventions
@@ -183,7 +184,9 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 - **`DEFAULT_SCHEMA.artifact_type`** includes all standard WCP types (prd, discovery, architecture, adr, gameplan, plan, test-matrix, review, qa-plan). The filesystem adapter's config.yaml previously overrode the incomplete defaults.
 - **Server test command:** `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db npx tsx packages/server/src/index.ts &` then `npx tsx src/server-api-test.ts`
 - **SSE broker:** `SSEBroker` in `sse.ts` manages connected clients via `ReadableStreamDefaultController`. Mutation route handlers call `broker.emit(event, data)` after successful operations. Events: `item_created`, `item_updated`, `namespace_created`, `namespace_updated`, `schema_updated`.
+- **All-items endpoint:** `GET /api/items` lists items across ALL namespaces. Uses `SqliteAdapter.listAllItems()` — a server-only method not part of the `WcpAdapter` interface. Supports the same query param filters as the namespace-scoped endpoint.
 - **Static file serving:** `@hono/node-server/serve-static` with `root: "./packages/server/public"` (relative to CWD). Registered after API routes so `/api/*` takes priority.
+- **SSE reconnect refetch:** The web UI tracks `sseHasConnected` to distinguish first connect from reconnection. On reconnect, it refetches the current view to catch events missed while disconnected.
 - **SSE test command:** Start server first (same as server test), then `npx tsx src/sse-test.ts`
 - **Auth middleware:** Bearer token via `WCP_API_KEY` env var. If set, all `/api/*` requests require `Authorization: Bearer <key>`. SSE endpoint also accepts `?token=<key>` query param (EventSource doesn't support custom headers). If `WCP_API_KEY` is unset, auth is disabled and server logs a warning on startup.
 - **Auth test command:** `rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db WCP_API_KEY=test-key npx tsx packages/server/src/index.ts &` then `WCP_TEST_API_KEY=test-key npx tsx src/sse-test.ts`

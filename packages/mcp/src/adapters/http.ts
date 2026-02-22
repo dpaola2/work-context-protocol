@@ -47,12 +47,24 @@ export class HttpAdapter implements WcpAdapter {
       );
     }
 
-    const json = await res.json();
+    let json: Record<string, unknown>;
+    try {
+      json = await res.json() as Record<string, unknown>;
+    } catch {
+      throw new WcpError(
+        "CONNECTION_ERROR",
+        `WCP server at ${this.serverUrl} returned non-JSON response (HTTP ${res.status}). ` +
+        `Check that the server is running and the URL is correct.`,
+      );
+    }
+
     if (!res.ok) {
-      if (json.error === "NOT_FOUND") throw new NotFoundError(json.message);
-      if (json.error === "NAMESPACE_NOT_FOUND") throw new NamespaceNotFoundError(json.message);
-      if (json.error === "VALIDATION_ERROR") throw new ValidationError("field", json.message);
-      throw new WcpError(json.error || "UNKNOWN", json.message || res.statusText);
+      const error = json.error as string | undefined;
+      const message = json.message as string | undefined;
+      if (error === "NOT_FOUND") throw new NotFoundError(message || "Not found");
+      if (error === "NAMESPACE_NOT_FOUND") throw new NamespaceNotFoundError(message || "Namespace not found");
+      if (error === "VALIDATION_ERROR") throw new ValidationError("field", message || "Validation error");
+      throw new WcpError(error || "UNKNOWN", message || res.statusText);
     }
     return json as T;
   }

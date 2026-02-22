@@ -514,6 +514,57 @@ export class SqliteAdapter implements WcpAdapter {
     return { key, name, description, itemCount: 0 };
   }
 
+  /**
+   * List items across ALL namespaces. Server-only method (not part of WcpAdapter interface).
+   * Used by the web UI "All Items" view (UI-009).
+   */
+  listAllItems(filters?: ItemFilters): ItemSummary[] {
+    let sql = "SELECT * FROM items WHERE 1=1";
+    const params: unknown[] = [];
+
+    if (filters?.status) {
+      sql += " AND status = ?";
+      params.push(filters.status);
+    }
+    if (filters?.priority) {
+      sql += " AND priority = ?";
+      params.push(filters.priority);
+    }
+    if (filters?.type) {
+      sql += " AND type = ?";
+      params.push(filters.type);
+    }
+    if (filters?.project) {
+      sql += " AND project = ?";
+      params.push(filters.project);
+    }
+    if (filters?.assignee) {
+      sql += " AND assignee = ?";
+      params.push(filters.assignee);
+    }
+    if (filters?.parent) {
+      sql += " AND parent = ?";
+      params.push(filters.parent);
+    }
+
+    sql += " ORDER BY updated DESC";
+
+    const rows = this.db.prepare(sql).all(...params) as ItemRow[];
+
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      status: r.status,
+      priority: r.priority ?? undefined,
+      type: r.type ?? undefined,
+      project: r.project ?? undefined,
+      assignee: r.assignee ?? undefined,
+      parent: r.parent ?? undefined,
+      created: r.created,
+      updated: r.updated,
+    }));
+  }
+
   async getSchema(namespace?: string): Promise<ResolvedSchema> {
     if (namespace) {
       this.requireNamespace(namespace);
