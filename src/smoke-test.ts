@@ -17,6 +17,7 @@ import {
   validateType,
   validateArtifactType,
 } from "./validation.js";
+import { parseRemoteUrl, detectRepo } from "./git.js";
 
 const DATA_PATH =
   process.env.WCP_DATA_PATH ||
@@ -45,8 +46,8 @@ async function smokeTest() {
   const namespaces = await adapter.listNamespaces();
   check("returns namespaces", namespaces.length >= 3);
   check(
-    "PIPE namespace exists",
-    namespaces.some((n) => n.key === "PIPE"),
+    "WCP namespace exists",
+    namespaces.some((n) => n.key === "WCP"),
   );
 
   // 2. wcp_create
@@ -205,8 +206,11 @@ async function smokeTest() {
   check("body replaced", afterBody.body === "New body content.");
   check("activity preserved after body update", afterBody.activity.includes("Before body update."));
 
-  // 9. wcp_attach
+  // 9. wcp_attach — first add prd/architecture as valid artifact types for TEST
   console.log("\n9. wcp_attach");
+  const setupConfig = readConfig(DATA_PATH);
+  addNamespaceArtifactTypes(setupConfig, "TEST", ["prd", "architecture"]);
+  writeConfig(DATA_PATH, setupConfig);
   const prdContent = "# Test PRD\n\nThis is a test PRD for the smoke test project.";
   const attached = await adapter.attachArtifact(newId, {
     type: "prd",
@@ -274,8 +278,8 @@ async function smokeTest() {
   check("global all equals defaults when no extensions", globalSchema.status.all.length === globalSchema.status.defaults.length);
   check("priority is fixed field", "values" in globalSchema.priority);
   check("type is fixed field", "values" in globalSchema.type);
-  check("artifact_type has defaults", globalSchema.artifact_type.defaults.includes("prd"));
-  check("artifact_type includes adr", globalSchema.artifact_type.defaults.includes("adr"));
+  check("artifact_type has defaults", globalSchema.artifact_type.defaults.includes("adr"));
+  check("artifact_type includes plan", globalSchema.artifact_type.defaults.includes("plan"));
 
   // With namespace — merges extensions
   const nsSchema = resolveSchema(config, "TEST");
@@ -284,6 +288,14 @@ async function smokeTest() {
   // 12. Schema mutation — add/remove statuses
   console.log("\n12. Schema mutation — statuses");
   const mutConfig = readConfig(DATA_PATH);
+
+  // Clean up any leftover extensions from prior failed runs
+  try { removeNamespaceStatuses(mutConfig, "TEST", ["deployed", "staging"]); } catch {}
+  try { removeNamespaceArtifactTypes(mutConfig, "TEST", ["release-notes", "changelog"]); } catch {}
+  writeConfig(DATA_PATH, mutConfig);
+  // Re-read clean config
+  const cleanMutConfig = readConfig(DATA_PATH);
+  Object.assign(mutConfig, cleanMutConfig);
 
   // Add custom statuses
   const addedStatuses = addNamespaceStatuses(mutConfig, "TEST", ["deployed", "staging"]);
@@ -338,7 +350,7 @@ async function smokeTest() {
 
   // Cannot remove default
   try {
-    removeNamespaceArtifactTypes(mutConfig, "TEST", ["prd"]);
+    removeNamespaceArtifactTypes(mutConfig, "TEST", ["adr"]);
     check("cannot remove default artifact type", false, "should have thrown");
   } catch (e: any) {
     check("cannot remove default artifact type", e.code === "VALIDATION_ERROR");
@@ -395,7 +407,7 @@ async function smokeTest() {
 
   // Valid artifact type
   try {
-    validateArtifactType("prd", resolvedOS.artifact_type.all);
+    validateArtifactType("adr", resolvedOS.artifact_type.all);
     check("valid artifact type passes", true);
   } catch {
     check("valid artifact type passes", false);
@@ -463,10 +475,129 @@ async function smokeTest() {
   check("bare config has default priorities", bareSchema.priority.values.length === DEFAULT_SCHEMA.priority.length);
   check("bare config has default artifact types", bareSchema.artifact_type.defaults.length === DEFAULT_SCHEMA.artifact_type.length);
 
-  // 18. Cleanup — remove extensions from TEST namespace config
-  console.log("\n18. Cleanup");
+  // 18. Git remote parsing
+  console.log("\n18. Git remote parsing — parseRemoteUrl");
+
+  // GitHub SSH
+  const ghSsh = parseRemoteUrl("git@github.com:dpaola2/work-context-protocol.git");
+  check("GitHub SSH parsed", !!ghSsh);
+  check("GitHub SSH owner", ghSsh?.owner === "dpaola2");
+  check("GitHub SSH repo", ghSsh?.repo === "work-context-protocol");
+  check("GitHub SSH provider", ghSsh?.provider === "github");
+
+  // GitHub HTTPS
+  const ghHttps = parseRemoteUrl("https://github.com/dpaola2/work-context-protocol.git");
+  check("GitHub HTTPS parsed", !!ghHttps);
+  check("GitHub HTTPS owner", ghHttps?.owner === "dpaola2");
+  check("GitHub HTTPS provider", ghHttps?.provider === "github");
+
+  // GitHub HTTPS without .git
+  const ghNoGit = parseRemoteUrl("https://github.com/dpaola2/work-context-protocol");
+  check("GitHub HTTPS no .git", ghNoGit?.repo === "work-context-protocol");
+
+  // Bitbucket SSH
+  const bbSsh = parseRemoteUrl("git@bitbucket.org:myorg/myrepo.git");
+  check("Bitbucket SSH parsed", !!bbSsh);
+  check("Bitbucket SSH provider", bbSsh?.provider === "bitbucket");
+
+  // Bitbucket HTTPS
+  const bbHttps = parseRemoteUrl("https://bitbucket.org/myorg/myrepo.git");
+  check("Bitbucket HTTPS provider", bbHttps?.provider === "bitbucket");
+
+  // GitLab
+  const gl = parseRemoteUrl("git@gitlab.com:group/project.git");
+  check("GitLab SSH provider", gl?.provider === "gitlab");
+
+  // Azure DevOps HTTPS
+  const azHttps = parseRemoteUrl("https://dev.azure.com/myorg/myproject/_git/myrepo");
+  check("Azure HTTPS parsed", !!azHttps);
+  check("Azure HTTPS owner", azHttps?.owner === "myorg/myproject");
+  check("Azure HTTPS repo", azHttps?.repo === "myrepo");
+  check("Azure HTTPS provider", azHttps?.provider === "azure");
+
+  // Azure DevOps SSH
+  const azSsh = parseRemoteUrl("git@ssh.dev.azure.com:v3/myorg/myproject/myrepo");
+  check("Azure SSH parsed", !!azSsh);
+  check("Azure SSH provider", azSsh?.provider === "azure");
+
+  // Unknown host
+  const unknown = parseRemoteUrl("git@selfhosted.example.com:owner/repo.git");
+  check("unknown host returns null", unknown === null);
+
+  // Invalid URL
+  const invalid = parseRemoteUrl("not-a-url");
+  check("invalid URL returns null", invalid === null);
+
+  // 19. Git remote detection — detectRepo
+  console.log("\n19. Git remote detection — detectRepo");
+
+  // Detect repo from this project directory
+  const wcpDir = path.resolve(
+    decodeURIComponent(
+      path.dirname(new URL(import.meta.url).pathname).replace(/^\/([A-Z]:)/, "$1"),
+    ),
+  );
+  // Use the project root (parent of src/)
+  const projectRoot = path.resolve(wcpDir, "..");
+  const wcpRepo = detectRepo(projectRoot);
+  check("detects WCP repo", !!wcpRepo);
+  check("WCP repo is GitHub", wcpRepo?.provider === "github");
+  check("WCP repo name", wcpRepo?.repo === "work-context-protocol");
+
+  // Non-existent folder
+  const noRepo = detectRepo("/tmp/nonexistent-folder-xyz");
+  check("non-existent folder returns null", noRepo === null);
+
+  // Folder without git
+  const noGit = detectRepo(DATA_PATH);
+  // DATA_PATH may or may not be a git repo, just verify it doesn't crash
+  check("data dir doesn't crash", noGit === null || !!noGit);
+
+  // 20. Namespace update — folders and repos
+  console.log("\n20. Namespace update — folders and repos");
+
+  // Update TEST namespace with this project's folder
+  const nsResult = await adapter.updateNamespace("TEST", {
+    folders: [projectRoot],
+  });
+  check("updateNamespace returns key", nsResult.key === "TEST");
+  check("updateNamespace has folders", nsResult.folders?.length === 1);
+  check("updateNamespace detected repos", (nsResult.repos?.length ?? 0) >= 1);
+  check("detected repo is GitHub", nsResult.repos?.[0]?.provider === "github");
+
+  // listNamespaces includes folders/repos
+  const nsListAfter = await adapter.listNamespaces();
+  const testNs = nsListAfter.find((n) => n.key === "TEST");
+  check("listNamespaces has folders", (testNs?.folders?.length ?? 0) >= 1);
+  check("listNamespaces has repos", (testNs?.repos?.length ?? 0) >= 1);
+
+  // Clear folders with empty array
+  const cleared = await adapter.updateNamespace("TEST", { folders: [] });
+  check("clear folders removes them", cleared.folders === undefined);
+  check("clear folders removes repos", cleared.repos === undefined);
+
+  // Non-existent folder validation
+  try {
+    await adapter.updateNamespace("TEST", {
+      folders: ["/tmp/this-folder-does-not-exist-xyz"],
+    });
+    check("non-existent folder error", false, "should have thrown");
+  } catch (e: any) {
+    check("non-existent folder error", e.code === "VALIDATION_ERROR");
+  }
+
+  // Non-existent namespace
+  try {
+    await adapter.updateNamespace("NOPE", { name: "test" });
+    check("non-existent namespace error", false, "should have thrown");
+  } catch (e: any) {
+    check("non-existent namespace error", e.code === "NAMESPACE_NOT_FOUND");
+  }
+
+  // 21. Cleanup — remove extensions from TEST namespace config
+  console.log("\n21. Cleanup");
   removeNamespaceStatuses(mutConfig, "TEST", ["deployed"]);
-  removeNamespaceArtifactTypes(mutConfig, "TEST", ["release-notes"]);
+  removeNamespaceArtifactTypes(mutConfig, "TEST", ["release-notes", "prd", "architecture"]);
   writeConfig(DATA_PATH, mutConfig);
   const cleanedSchema = resolveSchema(readConfig(DATA_PATH), "TEST");
   check("cleanup removed extensions", cleanedSchema.status.extensions.length === 0);

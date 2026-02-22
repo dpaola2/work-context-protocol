@@ -1,8 +1,18 @@
+import type { RepoInfo } from "./git.js";
+
 export interface Namespace {
   key: string;
   name: string;
   description: string;
   itemCount: number;
+  folders?: string[];
+  repos?: RepoInfo[];
+}
+
+export interface UpdateNamespaceInput {
+  name?: string;
+  description?: string;
+  folders?: string[]; // replaces entire list; [] to clear
 }
 
 export interface Artifact {
@@ -83,6 +93,7 @@ export interface ApproveArtifactInput {
 
 export interface WcpAdapter {
   listNamespaces(): Promise<Namespace[]>;
+  updateNamespace(key: string, changes: UpdateNamespaceInput): Promise<Namespace>;
   listItems(namespace: string, filters?: ItemFilters): Promise<ItemSummary[]>;
   getItem(id: string): Promise<WorkItem>;
   createItem(namespace: string, input: CreateItemInput): Promise<string>;

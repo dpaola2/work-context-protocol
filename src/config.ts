@@ -26,6 +26,7 @@ export interface NamespaceConfig {
   description: string;
   next: number;
   schema?: NamespaceSchemaConfig;
+  folders?: string[];
 }
 
 export interface WcpConfig {
