@@ -1,3 +1,7 @@
 node_modules/
 dist/
 *.tsbuildinfo
+.mcp.json
+*.db
+*.db-shm
+*.db-wal
