@@ -164,6 +164,7 @@ export interface SchemaUpdateResult {
 export interface WcpAdapter {
   listNamespaces(): Promise<Namespace[]>;
   listItems(namespace: string, filters?: ItemFilters): Promise<ItemSummary[]>;
+  listAllItems(filters?: ItemFilters): Promise<ItemSummary[]>;
   getItem(id: string): Promise<WorkItem>;
   createItem(namespace: string, input: CreateItemInput): Promise<string>;
   updateItem(id: string, changes: UpdateItemInput): Promise<void>;

@@ -96,6 +96,19 @@ export class HttpAdapter implements WcpAdapter {
     return res.items;
   }
 
+  async listAllItems(filters?: ItemFilters): Promise<ItemSummary[]> {
+    const params = new URLSearchParams();
+    if (filters) {
+      for (const [k, v] of Object.entries(filters)) {
+        if (v) params.set(k, v);
+      }
+    }
+    const qs = params.toString();
+    const path = `/api/items${qs ? `?${qs}` : ""}`;
+    const res = await this.request<{ items: ItemSummary[] }>("GET", path);
+    return res.items;
+  }
+
   async createItem(namespace: string, input: CreateItemInput): Promise<string> {
     const res = await this.request<{ id: string }>("POST", `/api/namespaces/${namespace}/items`, input);
     return res.id;

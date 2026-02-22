@@ -143,6 +143,23 @@ export class FilesystemAdapter implements WcpAdapter {
     return items;
   }
 
+  async listAllItems(filters?: ItemFilters): Promise<ItemSummary[]> {
+    const config = readConfig(this.dataPath);
+    const allItems: ItemSummary[] = [];
+
+    for (const namespace of Object.keys(config.namespaces)) {
+      const items = await this.listItems(namespace, filters);
+      allItems.push(...items);
+    }
+
+    // Sort merged results by updated descending
+    allItems.sort(
+      (a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime(),
+    );
+
+    return allItems;
+  }
+
   async getItem(id: string): Promise<WorkItem> {
     const { namespace } = parseCallsign(id);
     const config = readConfig(this.dataPath);

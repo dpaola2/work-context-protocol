@@ -99,7 +99,7 @@ export function createApp(adapter: SqliteAdapter, broker: SSEBroker, apiKey?: st
     if (query.assignee) filters.assignee = query.assignee;
     if (query.parent) filters.parent = query.parent;
 
-    const items = adapter.listAllItems(
+    const items = await adapter.listAllItems(
       Object.keys(filters).length ? filters : undefined,
     );
     return c.json({ items, count: items.length });

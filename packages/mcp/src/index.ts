@@ -144,7 +144,7 @@ server.tool(
   "wcp_list",
   "List work items in a namespace, optionally filtered by status, priority, type, project, assignee, or parent.",
   {
-    namespace: z.string().describe("Namespace key, e.g. 'PIPE'"),
+    namespace: z.string().optional().describe("Namespace key, e.g. 'PIPE'"),
     status: z.string().optional().describe("Filter by status"),
     priority: z.string().optional().describe("Filter by priority"),
     type: z.string().optional().describe("Filter by type"),
@@ -154,7 +154,9 @@ server.tool(
   },
   async ({ namespace, ...filters }) => {
     try {
-      const items = await adapter.listItems(namespace, filters);
+      const items = namespace
+        ? await adapter.listItems(namespace, filters)
+        : await adapter.listAllItems(filters);
       return jsonResponse({ items, count: items.length });
     } catch (err) {
       if (err instanceof WcpError) return errorResponse(err);

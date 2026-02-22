@@ -104,6 +104,24 @@ async function smokeTest() {
     filtered.every((i) => i.status === "in_progress"),
   );
 
+  // 6b. wcp_list — cross-namespace (listAllItems)
+  console.log("\n6b. wcp_list — cross-namespace (listAllItems)");
+  const allCross = await adapter.listAllItems();
+  check("listAllItems returns items from multiple namespaces", allCross.length >= 1);
+  check(
+    "listAllItems results include TEST items",
+    allCross.some((i) => i.id.startsWith("TEST-")),
+  );
+  const crossFiltered = await adapter.listAllItems({ status: "in_progress" });
+  check(
+    "listAllItems with status filter returns only matching items",
+    crossFiltered.length >= 1,
+  );
+  check(
+    "listAllItems with status filter all items match filter",
+    crossFiltered.every((i) => i.status === "in_progress"),
+  );
+
   // Error cases
   console.log("\n7. Error handling");
   try {

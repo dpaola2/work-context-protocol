@@ -77,6 +77,47 @@ function badge(type, value) {
   return h("span", { class: "badge badge-" + type, dataset: { value } }, value);
 }
 
+// ── Copy as markdown ─────────────────────────────────────────────────────
+
+function itemToMarkdown(item) {
+  const lines = ["---"];
+  lines.push("id: " + item.id);
+  lines.push("title: " + item.title);
+  lines.push("status: " + item.status);
+  if (item.priority) lines.push("priority: " + item.priority);
+  if (item.type) lines.push("type: " + item.type);
+  if (item.project) lines.push("project: " + item.project);
+  if (item.assignee) lines.push("assignee: " + item.assignee);
+  if (item.parent) lines.push("parent: " + item.parent);
+  lines.push("created: " + item.created);
+  lines.push("updated: " + item.updated);
+  if (item.artifacts && item.artifacts.length > 0) {
+    lines.push("artifacts:");
+    for (const a of item.artifacts) {
+      lines.push("  - type: " + a.type);
+      lines.push("    title: " + a.title);
+      lines.push("    url: " + a.url);
+    }
+  }
+  lines.push("---");
+  if (item.body) lines.push("", item.body);
+  if (item.activity) lines.push("", "---activity---", "", item.activity);
+  return lines.join("\n");
+}
+
+function copyItemAsMarkdown(item, btn) {
+  const md = itemToMarkdown(item);
+  navigator.clipboard.writeText(md).then(() => {
+    const orig = btn.textContent;
+    btn.textContent = "Copied!";
+    btn.classList.add("copied");
+    setTimeout(() => {
+      btn.textContent = orig;
+      btn.classList.remove("copied");
+    }, 1500);
+  });
+}
+
 // ── Navigation ───────────────────────────────────────────────────────────
 
 function viewToHash(view) {
@@ -395,6 +436,11 @@ async function renderItemDetail(id) {
     if (item.assignee) meta.appendChild(h("span", null, "Assignee: " + item.assignee));
     if (item.project) meta.appendChild(h("span", null, "Project: " + item.project));
     meta.appendChild(h("span", { style: "color: var(--text-secondary); font-size: 12px;" }, "Created " + item.created + " · Updated " + item.updated));
+    const copyBtn = h("button", {
+      class: "copy-btn",
+      onclick: () => copyItemAsMarkdown(item, copyBtn),
+    }, "Copy");
+    meta.appendChild(copyBtn);
     detail.appendChild(meta);
 
     // Body
@@ -412,11 +458,47 @@ async function renderItemDetail(id) {
     if (item.artifacts && item.artifacts.length > 0) {
       const artSection = h("div", { class: "artifacts-section" });
       artSection.appendChild(h("h3", null, "Artifacts"));
+      const contentCache = {};
       for (const art of item.artifacts) {
-        artSection.appendChild(h("div", { class: "artifact-item" },
+        const wrapper = h("div", { class: "artifact-wrapper" });
+        const chevron = h("span", { class: "artifact-chevron" }, "\u25b6");
+        const header = h("div", { class: "artifact-item-clickable" },
+          chevron,
           h("span", { class: "artifact-type" }, art.type),
           h("span", null, art.title)
-        ));
+        );
+        const contentDiv = h("div", { class: "artifact-content" });
+        contentDiv.style.display = "none";
+
+        header.addEventListener("click", async () => {
+          const isOpen = contentDiv.style.display !== "none";
+          if (isOpen) {
+            contentDiv.style.display = "none";
+            chevron.textContent = "\u25b6";
+            return;
+          }
+          // Fetch if not cached
+          const filename = art.url.split("/").pop();
+          if (!contentCache[filename]) {
+            contentDiv.innerHTML = '<div class="loading" style="padding: 12px 0;">Loading...</div>';
+            contentDiv.style.display = "block";
+            chevron.textContent = "\u25bc";
+            try {
+              const data = await api("/api/items/" + id + "/artifacts/" + filename);
+              contentCache[filename] = data.content;
+            } catch (err) {
+              contentDiv.innerHTML = '<div class="empty-state" style="padding: 12px 0;"><p>Failed to load artifact.</p></div>';
+              return;
+            }
+          }
+          contentDiv.innerHTML = renderMarkdown(contentCache[filename]);
+          contentDiv.style.display = "block";
+          chevron.textContent = "\u25bc";
+        });
+
+        wrapper.appendChild(header);
+        wrapper.appendChild(contentDiv);
+        artSection.appendChild(wrapper);
       }
       detail.appendChild(artSection);
     }

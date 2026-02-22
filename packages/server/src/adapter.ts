@@ -514,11 +514,7 @@ export class SqliteAdapter implements WcpAdapter {
     return { key, name, description, itemCount: 0 };
   }
 
-  /**
-   * List items across ALL namespaces. Server-only method (not part of WcpAdapter interface).
-   * Used by the web UI "All Items" view (UI-009).
-   */
-  listAllItems(filters?: ItemFilters): ItemSummary[] {
+  async listAllItems(filters?: ItemFilters): Promise<ItemSummary[]> {
     let sql = "SELECT * FROM items WHERE 1=1";
     const params: unknown[] = [];
 

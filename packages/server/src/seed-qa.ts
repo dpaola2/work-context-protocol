@@ -33,6 +33,16 @@ function createHttpAdapter(serverUrl: string, apiKey?: string): WcpAdapter {
     async listItems(ns) {
       return (await req<{ items: ItemSummary[] }>("GET", `/api/namespaces/${ns}/items`)).items;
     },
+    async listAllItems(filters) {
+      const params = new URLSearchParams();
+      if (filters) {
+        for (const [k, v] of Object.entries(filters)) {
+          if (v) params.set(k, v);
+        }
+      }
+      const qs = params.toString();
+      return (await req<{ items: ItemSummary[] }>("GET", `/api/items${qs ? `?${qs}` : ""}`)).items;
+    },
     async createItem(ns, input) {
       return (await req<{ id: string }>("POST", `/api/namespaces/${ns}/items`, input)).id;
     },
