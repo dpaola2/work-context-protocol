@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-WCP (Work Context Protocol) is an MCP server that provides structured work item tracking via markdown files with YAML frontmatter. It exposes 12 tools over MCP for creating, reading, updating, and organizing work items by namespace.
+WCP (Work Context Protocol) is an MCP server that provides structured work item tracking via markdown files with YAML frontmatter. It exposes 13 tools over MCP for creating, reading, updating, and organizing work items by namespace. Namespaces can be linked to project folders — WCP auto-detects git repos from `.git/config` and injects CLAUDE.md work tracking sections.
 
 **Runtime:** Node.js + TypeScript (ES2022, Node16 module resolution)
 **Transport:** MCP stdio
@@ -22,6 +22,7 @@ WCP (Work Context Protocol) is an MCP server that provides structured work item 
 | `src/validation.ts` | Field validators — `validateStatus()`, `validatePriority()`, `validateType()`, `validateArtifactType()`, `validateVerdict()` |
 | `src/utils.ts` | `parseCallsign()`, `today()` (date-only), `now()` (ISO 8601 with ms) |
 | `src/errors.ts` | Error hierarchy — `WcpError` → `NotFoundError`, `NamespaceNotFoundError`, `ValidationError` |
+| `src/git.ts` | Git remote parsing — `parseRemoteUrl()`, `detectRepo()`, `RepoInfo` interface |
 | `src/config.ts` | `readConfig()` / `writeConfig()` for `.wcp/config.yaml` |
 | `src/seed.ts` | Data seeding script |
 
@@ -31,6 +32,7 @@ WCP (Work Context Protocol) is an MCP server that provides structured work item 
 - **Compose on existing primitives:** New use cases should be satisfied by composing readers over existing data — not adding new tools or fields
 - **Adapter pattern:** `WcpAdapter` interface defines the contract. `FilesystemAdapter` is the only implementation. Future adapters (Linear, SQLite) can implement differently
 - **Activity log is append-only:** Timestamped, human/agent-readable. The right primitive for state transitions
+- **Namespace-to-folder linking:** Namespaces store `folders` in config. At read-time, `detectRepo()` scans each folder's `.git/config` for origin remote and returns `RepoInfo` (owner, repo, provider). `updateNamespace()` validates folders exist and injects CLAUDE.md work tracking sections into linked folders
 
 ### Work Item File Format
 

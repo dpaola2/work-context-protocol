@@ -52,7 +52,7 @@ WCP is a work item tracker for AI agents and humans. It stores structured work i
 
 ## Core Concepts
 
-- **Namespaces** organize work by domain (e.g., PROJ for a project, OPS for operations). Each namespace has a directory of work items.
+- **Namespaces** organize work by domain (e.g., PROJ for a project, OPS for operations). Each namespace has a directory of work items. Namespaces can be linked to project folders — WCP auto-detects git repos from linked folders.
 - **Work items** are identified by callsigns like PROJ-12 or OPS-3. Each has: frontmatter (structured fields), a markdown body (description/specs), and an activity log (append-only comments).
 - **Artifacts** are documents attached to work items (PRDs, architecture proposals, gameplans, etc.). Stored in a companion directory alongside the work item.
 
@@ -61,11 +61,12 @@ WCP is a work item tracker for AI agents and humans. It stores structured work i
 1. **Start**: Call wcp_namespaces to see available namespaces and their item counts.
 2. **Find work**: Call wcp_list with a namespace to see items. Filter by status, priority, type, project, assignee, or parent.
 3. **Read details**: Call wcp_get with a callsign to see full item content including body, artifacts list, and activity log.
-4. **Create work**: Call wcp_create with a namespace and title. Auto-generates a callsign. Defaults to status=backlog.
-5. **Update work**: Call wcp_update to change status, assignee, priority, or other fields. Use the body param to update the description.
-6. **Log progress**: Call wcp_comment to append to the activity log with your author name and a message.
-7. **Attach documents**: Call wcp_attach to store artifact files (PRDs, specs, proposals) on a work item. These are stored in a companion directory.
-8. **Read documents**: Call wcp_get_artifact to retrieve the content of an attached artifact.
+4. **Link folders**: Call wcp_update_namespace to link project directories. WCP reads .git/config to auto-detect repos (owner/repo, provider). Linked folders also get CLAUDE.md work tracking sections injected.
+5. **Create work**: Call wcp_create with a namespace and title. Auto-generates a callsign. Defaults to status=backlog.
+6. **Update work**: Call wcp_update to change status, assignee, priority, or other fields. Use the body param to update the description.
+7. **Log progress**: Call wcp_comment to append to the activity log with your author name and a message.
+8. **Attach documents**: Call wcp_attach to store artifact files (PRDs, specs, proposals) on a work item. These are stored in a companion directory.
+9. **Read documents**: Call wcp_get_artifact to retrieve the content of an attached artifact.
 
 ## Schema Discovery
 
@@ -113,8 +114,14 @@ server.tool(
       .describe("Uppercase namespace key, e.g. 'PROJ'. Must be unique."),
     name: z.string().describe("Human-readable name, e.g. 'Project Alpha'"),
     description: z.string().describe("What this namespace is for"),
+    folders: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Project directories to link. WCP auto-detects git repos from these folders.",
+      ),
   },
-  async ({ key, name, description }) => {
+  async ({ key, name, description, folders }) => {
     try {
       if (!/^[A-Z][A-Z0-9]*$/.test(key)) {
         return errorResponse(
@@ -138,10 +145,42 @@ server.tool(
       config.namespaces[key] = { name, description, next: 1 };
       writeConfig(DATA_PATH, config);
 
+      // If folders provided, use updateNamespace to validate, store, and inject CLAUDE.md
+      if (folders && folders.length > 0) {
+        const ns = await adapter.updateNamespace(key, { folders });
+        return jsonResponse({ created: true, namespace: ns });
+      }
+
       return jsonResponse({
         created: true,
         namespace: { key, name, description, itemCount: 0 },
       });
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
+// --- wcp_update_namespace ---
+server.tool(
+  "wcp_update_namespace",
+  "Update a namespace's metadata or linked folders. Use folders to link project directories — WCP auto-detects git repos. Pass an empty folders array to clear links.",
+  {
+    key: z.string().describe("Namespace key, e.g. 'PROJ'"),
+    name: z.string().optional().describe("New human-readable name"),
+    description: z.string().optional().describe("New description"),
+    folders: z
+      .array(z.string())
+      .optional()
+      .describe(
+        "Project directories to link (replaces existing list). Empty array clears folders.",
+      ),
+  },
+  async ({ key, ...changes }) => {
+    try {
+      const ns = await adapter.updateNamespace(key, changes);
+      return jsonResponse({ updated: true, namespace: ns });
     } catch (err) {
       if (err instanceof WcpError) return errorResponse(err);
       throw err;
