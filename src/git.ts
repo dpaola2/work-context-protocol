@@ -52,9 +52,9 @@ export function parseRemoteUrl(url: string): RepoInfo | null {
     return { owner: ssh[2], repo: ssh[3], provider };
   }
 
-  // HTTPS: https://host/owner/repo.git
+  // HTTPS: https://[user@]host/owner/repo.git
   const https = url.match(
-    /https?:\/\/([^/]+)\/([^/]+)\/([^/.\s]+?)(?:\.git)?$/,
+    /https?:\/\/(?:[^@/]+@)?([^/]+)\/([^/]+)\/([^/.\s]+?)(?:\.git)?$/,
   );
   if (https) {
     const provider = HOST_TO_PROVIDER[https[1]];
