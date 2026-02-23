@@ -1,7 +1,7 @@
 {
   "private": true,
   "license": "MIT",
-  "workspaces": ["packages/shared", "packages/mcp", "packages/server"],
+  "workspaces": ["packages/shared", "packages/mcp"],
   "scripts": {
     "build": "tsc -b"
   },

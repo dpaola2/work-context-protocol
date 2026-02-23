@@ -1,6 +1,6 @@
 # WCP — Work Context Protocol
 
-A structured way for AI agents and humans to track work. Organize tasks into namespaces, attach documents, log activity, and query everything through 12 MCP tools. Two storage modes: local markdown files or a remote SQLite server with a live web dashboard.
+A structured way for AI agents and humans to track work. Open protocol with 12 MCP tools. Organize tasks into namespaces, attach documents, log activity, and query everything through MCP.
 
 ## Why WCP?
 
@@ -10,16 +10,19 @@ AI agents need persistent context across sessions. They need to know what's been
 
 **With WCP:** An agent picks up `PROJ-12`, reads the description, checks the activity log to see what the last agent did, updates the status, and leaves a comment for the next session.
 
-## Two modes
+## WCP Cloud (recommended)
 
-| Mode | Best for | Storage | Setup |
-|------|----------|---------|-------|
-| **Filesystem** (default) | Single machine, git-tracked, Obsidian-compatible | Markdown files in a directory | Point at a folder |
-| **Server** | Multiple machines, live web dashboard, no git sync | SQLite database over HTTP | Run the server, point MCP at it |
+The fastest way to get started. Hosted, managed, just works.
 
-You can start with filesystem mode and migrate to server mode later — there's a migration script that imports everything.
+```bash
+claude mcp add --transport http wcp https://workcontextprotocol.io/mcp
+```
 
-## Quick start
+That's it. One line. Your agent now has full access to all 12 WCP tools. Visit [workcontextprotocol.io](https://workcontextprotocol.io) to learn more.
+
+## Self-hosted filesystem mode
+
+Free, local, git-trackable, Obsidian-compatible. All your data stays on your machine as markdown files.
 
 ### Install
 
@@ -30,15 +33,13 @@ npm install
 npx tsc -b
 ```
 
-### Option A: Filesystem mode (simplest)
-
-Set up a data directory:
+### Set up a data directory
 
 ```bash
 mkdir -p ~/projects/wcp-data/.wcp
 ```
 
-Add WCP to Claude Code:
+### Add WCP to Claude Code
 
 ```bash
 claude mcp add wcp --scope user \
@@ -63,85 +64,6 @@ Or add to your project's `.mcp.json`:
 ```
 
 Then use `wcp_create_namespace` to create your first namespace — no manual config editing needed.
-
-### Option B: Server mode (multi-machine, web dashboard)
-
-Start the server:
-
-```bash
-WCP_DB_PATH=./wcp.db npx tsx packages/server/src/index.ts
-```
-
-The server creates a fresh SQLite database if it doesn't exist. Open http://localhost:3000 to see the web dashboard.
-
-Point your MCP server at it:
-
-```bash
-claude mcp add wcp --scope user \
-  -e WCP_ADAPTER=http \
-  -e WCP_SERVER_URL=http://localhost:3000 \
-  -- node ~/projects/wcp/packages/mcp/dist/index.js
-```
-
-Or in `.mcp.json`:
-
-```json
-{
-  "mcpServers": {
-    "wcp": {
-      "command": "node",
-      "args": ["/path/to/wcp/packages/mcp/dist/index.js"],
-      "env": {
-        "WCP_ADAPTER": "http",
-        "WCP_SERVER_URL": "http://localhost:3000"
-      }
-    }
-  }
-}
-```
-
-#### Authentication
-
-Set `WCP_API_KEY` on both the server and the MCP config to enable bearer token auth:
-
-```bash
-# Server
-WCP_API_KEY=your-secret WCP_DB_PATH=./wcp.db npx tsx packages/server/src/index.ts
-
-# MCP config — add to env block
-"WCP_API_KEY": "your-secret"
-```
-
-If `WCP_API_KEY` is not set, auth is disabled (convenient for local dev).
-
-#### Docker
-
-```bash
-docker build -t wcp-server -f packages/server/Dockerfile .
-docker run -p 3000:3000 -v wcp-data:/data -e WCP_API_KEY=your-secret wcp-server
-```
-
-SQLite data persists in the `/data` volume. Container restarts preserve all data.
-
-## Migrating from filesystem to server
-
-If you've been using filesystem mode and want to switch to the server:
-
-```bash
-npx tsx packages/server/src/migrate-fs.ts \
-  --source ~/projects/wcp-data \
-  --db ./wcp.db
-```
-
-This reads your `config.yaml`, all work item `.md` files, activity logs, and artifacts, and imports everything into SQLite. The script is idempotent — safe to re-run.
-
-Then start the server pointing at the migrated database:
-
-```bash
-WCP_DB_PATH=./wcp.db npx tsx packages/server/src/index.ts
-```
-
-Your filesystem data directory is not modified. You can keep using it as a backup or with Obsidian.
 
 ## How it works
 
@@ -230,45 +152,16 @@ WCP exposes 12 tools via the Model Context Protocol:
 
 The MCP server includes instructions that are sent to agents during the handshake, so they understand how to use the tools without additional prompting.
 
-## Web dashboard
-
-When running in server mode, open `http://localhost:3000` (or wherever you deployed it) to see a read-only web dashboard with:
-
-- **Namespace list** — all namespaces with item counts
-- **Item list** — filterable by status, priority, and type
-- **Item detail** — rendered markdown body, activity log, artifacts
-- **All items** — cross-namespace view with filters
-- **Live updates** — SSE-powered, no refresh needed. When an agent creates or updates an item via MCP, the dashboard updates automatically.
-
-The dashboard is read-only. All mutations go through MCP tools or the REST API.
-
 ## Testing
 
-### Automated tests (378 total)
+189 automated tests across 4 suites:
 
 ```bash
-# Filesystem adapter tests (no server needed)
 npx tsx packages/mcp/src/smoke-test.ts              # 84 tests
 npx tsx packages/mcp/src/status-transition-test.ts   # 26 tests
 npx tsx packages/mcp/src/approve-test.ts             # 35 tests
 npx tsx packages/mcp/src/adapter-expansion-test.ts   # 44 tests
-
-# Server tests (start a test server first)
-rm -f /tmp/wcp-test.db && WCP_DB_PATH=/tmp/wcp-test.db npx tsx packages/server/src/index.ts &
-npx tsx src/server-api-test.ts                       # 110 tests
-npx tsx src/http-adapter-test.ts                     # 34 tests
-npx tsx src/sse-test.ts                              # 13 tests
-npx tsx src/migration-test.ts                        # 32 tests
 ```
-
-### Manual QA with seed data
-
-```bash
-rm -f /tmp/wcp-qa.db && WCP_DB_PATH=/tmp/wcp-qa.db npx tsx packages/server/src/seed-qa.ts
-WCP_DB_PATH=/tmp/wcp-qa.db npx tsx packages/server/src/index.ts
-```
-
-This creates 3 test namespaces with 16 items covering all statuses, priorities, types, artifacts, activity logs, schema extensions, and parent/child relationships.
 
 ## Architecture
 
@@ -277,8 +170,7 @@ WCP is organized as an npm workspaces monorepo:
 | Package | Path | Purpose |
 |---------|------|---------|
 | `@wcp/shared` | `packages/shared/` | Types, errors, validation, schema — zero runtime deps |
-| `@wcp/mcp` | `packages/mcp/` | MCP server + FilesystemAdapter + HttpAdapter |
-| `@wcp/server` | `packages/server/` | Hono REST API + SQLite + web dashboard |
+| `@wcp/mcp` | `packages/mcp/` | MCP server + FilesystemAdapter |
 
 The adapter pattern separates protocol from storage:
 
@@ -287,26 +179,24 @@ Claude Code / any MCP client
   └── MCP Server (packages/mcp/src/index.ts)
         └── 12 Tool Handlers
               └── WcpAdapter interface (packages/shared/src/types.ts)
-                    ├── FilesystemAdapter → markdown files
-                    └── HttpAdapter → HTTP → WCP Server → SQLite
+                    └── FilesystemAdapter → markdown files
 ```
 
 ### Environment variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `WCP_ADAPTER` | `filesystem` | Adapter to use: `filesystem` or `http` |
-| `WCP_DATA_PATH` | — | Path to filesystem data directory (filesystem mode) |
-| `WCP_SERVER_URL` | — | Server URL (http mode, e.g. `http://localhost:3000`) |
-| `WCP_API_KEY` | — | Bearer token for auth (server + MCP config). Disabled if unset. |
-| `WCP_DB_PATH` | `wcp.db` | SQLite database path (server only) |
-| `PORT` | `3000` | Server listen port (server only) |
+| `WCP_DATA_PATH` | `~/projects/wcp-data` | Path to filesystem data directory |
 
 ## Design principles
 
 1. **Evolve from working systems.** Build the tool. Use it. Extract the protocol from what works.
-2. **Keep it simple.** Markdown + YAML for filesystem. SQLite for server. No ORM, no framework magic.
+2. **Keep it simple.** Markdown + YAML for storage. No ORM, no framework magic.
 3. **Contextualize work, don't just store it.** WCP's job is to organize the current state of a piece of work — description, status, activity history, attached documents — so whoever picks it up next has full context.
 4. **Bidirectional.** Agents read context AND write back — status, comments, artifacts.
 5. **No enforced transitions.** Pure data layer. No automations, triggers, or enforced state machines.
 6. **Compose, don't extend.** New use cases should be satisfied by reading existing data, not adding tools or fields to WCP.
+
+## License
+
+MIT

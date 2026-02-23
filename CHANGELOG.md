@@ -2,6 +2,32 @@
 
 All notable changes to WCP are documented here.
 
+## [0.3.0] — 2026-02-23
+
+### Breaking Changes
+
+**Server package removed.** The `@wcp/server` package (Hono REST API, SQLite, web dashboard) has been removed. For hosted WCP, use [WCP Cloud](https://workcontextprotocol.io) — one line, no local server needed:
+
+```bash
+claude mcp add --transport http wcp https://workcontextprotocol.io/mcp
+```
+
+**HTTP adapter removed.** `WCP_ADAPTER=http` is no longer supported. WCP Cloud speaks MCP natively — connect directly with `claude mcp add`.
+
+**Environment variables removed:** `WCP_ADAPTER`, `WCP_SERVER_URL`, `WCP_API_KEY`.
+
+### Changed
+
+- Repositioned as protocol spec + local filesystem adapter
+- README rewritten: WCP Cloud as recommended path, filesystem as free self-host option
+
+### Removed
+
+- `@wcp/server` package (Hono REST API, SQLite adapter, web dashboard, Docker, migration script, QA seed data)
+- `HttpAdapter` from `@wcp/mcp`
+- Server test suites (110 + 34 + 13 + 32 = 189 server tests)
+- HTTP benchmark
+
 ## [0.2.0] — 2026-02-22
 
 ### Breaking Changes
