@@ -163,6 +163,25 @@ npx tsx packages/mcp/src/approve-test.ts             # 35 tests
 npx tsx packages/mcp/src/adapter-expansion-test.ts   # 44 tests
 ```
 
+## Connect a project to a namespace
+
+To make Claude Code automatically track work in a specific namespace when you're working in a project directory, add a section to that project's `CLAUDE.md`:
+
+```markdown
+## Work Tracking (CRITICAL)
+
+This project is tracked in WCP namespace `YOUR_NS`.
+
+**When the user asks "where are we", "status", "what's next", or starts a new session:** immediately call `wcp_list` with namespace `YOUR_NS` and `wcp_get` on active items to load current state. Do this BEFORE responding.
+
+- `wcp_list` with namespace `YOUR_NS` — see all work items and their status
+- `wcp_get` on active items — full context, body, and activity log
+- `wcp_comment` — log session progress before ending a session
+- `wcp_update` — change item status as work progresses
+```
+
+Replace `YOUR_NS` with your namespace key (e.g., `PROJ`). Claude Code reads `CLAUDE.md` at session start, so the agent will always know which namespace to use. This works identically with the filesystem adapter and [WCP Cloud](https://workcontextprotocol.io).
+
 ## Architecture
 
 WCP is organized as an npm workspaces monorepo:
