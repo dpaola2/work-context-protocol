@@ -15,7 +15,7 @@ AI agents need persistent context across sessions. They need to know what's been
 The fastest way to get started. Hosted, managed, just works.
 
 ```bash
-claude mcp add --transport http wcp https://workcontextprotocol.io/mcp
+claude mcp add --transport http --scope user wcp https://workcontextprotocol.io/mcp
 ```
 
 That's it. One line. Your agent now has full access to all 12 WCP tools. Visit [workcontextprotocol.io](https://workcontextprotocol.io) to learn more.
