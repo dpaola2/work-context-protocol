@@ -18,9 +18,9 @@
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
-import { readConfig, DEFAULT_SCHEMA } from "./config.js";
+import { readConfig } from "./config.js";
 import { parseWorkItem } from "./parser.js";
-import { parseCallsign } from "./utils.js";
+import { DEFAULT_SCHEMA, parseCallsign } from "@wcp/shared";
 
 // ─── Types ───────────────────────────────────────────────────
 

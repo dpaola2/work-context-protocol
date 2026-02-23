@@ -1,23 +1,12 @@
 {
-  "name": "wcp",
-  "version": "1.0.0",
-  "description": "Work Context Protocol — MCP server for structured work item tracking",
-  "type": "module",
-  "main": "dist/index.js",
+  "private": true,
+  "license": "MIT",
+  "workspaces": ["packages/shared", "packages/mcp"],
   "scripts": {
-    "build": "tsc",
-    "start": "node dist/index.js",
-    "seed": "node dist/seed.js",
-    "smoke-test": "node dist/smoke-test.js",
-    "migrate": "node dist/migrate.js"
-  },
-  "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.26.0",
-    "gray-matter": "^4.0.3",
-    "zod": "^3.24.0"
+    "build": "tsc -b",
+    "migrate": "node packages/mcp/dist/migrate.js"
   },
   "devDependencies": {
-    "@types/node": "^22.0.0",
     "typescript": "^5.9.0"
   }
 }

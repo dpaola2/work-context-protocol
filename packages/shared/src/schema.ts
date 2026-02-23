@@ -1,26 +1,10 @@
-import {
-  DEFAULT_SCHEMA,
-  type WcpConfig,
-  type SchemaConfig,
-} from "./config.js";
+import type {
+  WcpConfig,
+  SchemaConfig,
+  ResolvedSchema,
+} from "./types.js";
+import { DEFAULT_SCHEMA } from "./types.js";
 import { ValidationError } from "./errors.js";
-
-export interface ExtensibleField {
-  defaults: string[];
-  extensions: string[];
-  all: string[];
-}
-
-export interface FixedField {
-  values: string[];
-}
-
-export interface ResolvedSchema {
-  status: ExtensibleField;
-  priority: FixedField;
-  type: FixedField;
-  artifact_type: ExtensibleField;
-}
 
 function getGlobalSchema(config: WcpConfig): SchemaConfig {
   return config.schema ?? DEFAULT_SCHEMA;

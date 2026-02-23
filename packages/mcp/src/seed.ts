@@ -1,7 +1,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import yaml from "js-yaml";
-import { DEFAULT_SCHEMA, type WcpConfig } from "./config.js";
+import { DEFAULT_SCHEMA, type WcpConfig } from "@wcp/shared";
 import { serializeWorkItem } from "./parser.js";
 
 const DATA_PATH =

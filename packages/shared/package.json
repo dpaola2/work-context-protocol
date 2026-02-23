@@ -1,0 +1,14 @@
+{
+  "name": "@wcp/shared",
+  "version": "1.0.0",
+  "description": "Shared types, validation, and schema logic for WCP",
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.0"
+  }
+}

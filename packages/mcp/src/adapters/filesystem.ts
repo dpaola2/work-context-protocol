@@ -4,7 +4,6 @@ import matter from "gray-matter";
 import type {
   WcpAdapter,
   Namespace,
-  UpdateNamespaceInput,
   ItemSummary,
   WorkItem,
   Artifact,
@@ -14,24 +13,30 @@ import type {
   AttachArtifactInput,
   ApproveArtifactInput,
   ItemFilters,
-} from "../adapter.js";
-import { detectRepo } from "../git.js";
-import { readConfig, writeConfig } from "../config.js";
-import { parseWorkItem, serializeWorkItem } from "../parser.js";
-import { parseCallsign, today, now } from "../utils.js";
+  ResolvedSchema,
+  SchemaUpdateInput,
+  SchemaUpdateResult,
+} from "@wcp/shared";
 import {
+  NotFoundError,
+  NamespaceNotFoundError,
+  ValidationError,
+  resolveSchema,
+  addNamespaceStatuses,
+  removeNamespaceStatuses,
+  addNamespaceArtifactTypes,
+  removeNamespaceArtifactTypes,
   validateStatus,
   validatePriority,
   validateType,
   validateArtifactType,
   validateVerdict,
-} from "../validation.js";
-import { resolveSchema } from "../schema.js";
-import {
-  NotFoundError,
-  NamespaceNotFoundError,
-  ValidationError,
-} from "../errors.js";
+  parseCallsign,
+  today,
+  now,
+} from "@wcp/shared";
+import { readConfig, writeConfig } from "../config.js";
+import { parseWorkItem, serializeWorkItem } from "../parser.js";
 
 export class FilesystemAdapter implements WcpAdapter {
   constructor(private dataPath: string) {
@@ -62,110 +67,15 @@ export class FilesystemAdapter implements WcpAdapter {
         const files = fs.readdirSync(nsDir).filter((f) => f.endsWith(".md"));
         itemCount = files.length;
       }
-
-      const entry: Namespace = {
+      namespaces.push({
         key,
         name: ns.name,
         description: ns.description,
         itemCount,
-      };
-
-      if (ns.folders && ns.folders.length > 0) {
-        entry.folders = ns.folders;
-        entry.repos = ns.folders
-          .map((f) => detectRepo(f))
-          .filter((r) => r !== null);
-      }
-
-      namespaces.push(entry);
+      });
     }
 
     return namespaces;
-  }
-
-  async updateNamespace(
-    key: string,
-    changes: UpdateNamespaceInput,
-  ): Promise<Namespace> {
-    const config = readConfig(this.dataPath);
-    if (!config.namespaces[key]) {
-      throw new NamespaceNotFoundError(key);
-    }
-
-    const ns = config.namespaces[key];
-
-    if (changes.name !== undefined) ns.name = changes.name;
-    if (changes.description !== undefined) ns.description = changes.description;
-
-    if (changes.folders !== undefined) {
-      // Validate folders exist on disk
-      for (const folder of changes.folders) {
-        if (!fs.existsSync(folder)) {
-          throw new ValidationError(
-            "folders",
-            `Folder does not exist: ${folder}`,
-          );
-        }
-      }
-      ns.folders = changes.folders.length > 0 ? changes.folders : undefined;
-    }
-
-    writeConfig(this.dataPath, config);
-
-    // Inject CLAUDE.md work tracking section into linked folders
-    if (ns.folders) {
-      for (const folder of ns.folders) {
-        this.injectClaudeMd(folder, key);
-      }
-    }
-
-    // Build response with repo detection
-    const nsDir = path.join(this.dataPath, key);
-    let itemCount = 0;
-    if (fs.existsSync(nsDir)) {
-      const files = fs.readdirSync(nsDir).filter((f) => f.endsWith(".md"));
-      itemCount = files.length;
-    }
-
-    const result: Namespace = {
-      key,
-      name: ns.name,
-      description: ns.description,
-      itemCount,
-    };
-
-    if (ns.folders && ns.folders.length > 0) {
-      result.folders = ns.folders;
-      result.repos = ns.folders
-        .map((f) => detectRepo(f))
-        .filter((r) => r !== null);
-    }
-
-    return result;
-  }
-
-  private injectClaudeMd(folder: string, namespaceKey: string): void {
-    const claudeMdPath = path.join(folder, "CLAUDE.md");
-    if (!fs.existsSync(claudeMdPath)) return;
-
-    const content = fs.readFileSync(claudeMdPath, "utf-8");
-    if (content.includes("Work Tracking (CRITICAL)")) return;
-
-    const section = `
-
-## Work Tracking (CRITICAL)
-
-This project is tracked in WCP namespace \`${namespaceKey}\`.
-
-**When the user asks "where are we", "status", "what's next", or starts a new session:** immediately call \`wcp_list\` with namespace \`${namespaceKey}\` and \`wcp_get\` on active items BEFORE responding.
-
-- \`wcp_list\` with namespace \`${namespaceKey}\` — see all work items and their status
-- \`wcp_get\` on active items — full context, body, and activity log
-- \`wcp_comment\` — log session progress before ending a session
-- \`wcp_update\` — change item status as work progresses
-`;
-
-    fs.writeFileSync(claudeMdPath, content + section, "utf-8");
   }
 
   async listItems(
@@ -231,6 +141,23 @@ This project is tracked in WCP namespace \`${namespaceKey}\`.
     );
 
     return items;
+  }
+
+  async listAllItems(filters?: ItemFilters): Promise<ItemSummary[]> {
+    const config = readConfig(this.dataPath);
+    const allItems: ItemSummary[] = [];
+
+    for (const namespace of Object.keys(config.namespaces)) {
+      const items = await this.listItems(namespace, filters);
+      allItems.push(...items);
+    }
+
+    // Sort merged results by updated descending
+    allItems.sort(
+      (a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime(),
+    );
+
+    return allItems;
   }
 
   async getItem(id: string): Promise<WorkItem> {
@@ -601,5 +528,64 @@ This project is tracked in WCP namespace \`${namespaceKey}\`.
     parsedItem.frontmatter.updated = today();
     const newItemContent = serializeWorkItem(parsedItem);
     fs.writeFileSync(itemPath, newItemContent, "utf-8");
+  }
+
+  // --- New methods (adapter expansion) ---
+
+  async createNamespace(key: string, name: string, description: string): Promise<Namespace> {
+    if (!/^[A-Z][A-Z0-9]*$/.test(key)) {
+      throw new ValidationError(
+        "namespace",
+        `Invalid namespace key '${key}'. Must be uppercase letters/numbers, starting with a letter (e.g. 'PROJ').`,
+      );
+    }
+
+    const config = readConfig(this.dataPath);
+    if (config.namespaces[key]) {
+      throw new ValidationError(
+        "namespace",
+        `Namespace '${key}' already exists.`,
+      );
+    }
+
+    config.namespaces[key] = { name, description, next: 1 };
+    writeConfig(this.dataPath, config);
+
+    return { key, name, description, itemCount: 0 };
+  }
+
+  async getSchema(namespace?: string): Promise<ResolvedSchema> {
+    const config = readConfig(this.dataPath);
+    if (namespace && !config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+    return resolveSchema(config, namespace);
+  }
+
+  async updateSchema(namespace: string, changes: SchemaUpdateInput): Promise<SchemaUpdateResult> {
+    const config = readConfig(this.dataPath);
+    if (!config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+
+    const result: Record<string, string[]> = {};
+
+    if (changes.addStatuses?.length) {
+      result.added_statuses = addNamespaceStatuses(config, namespace, changes.addStatuses);
+    }
+    if (changes.removeStatuses?.length) {
+      result.removed_statuses = removeNamespaceStatuses(config, namespace, changes.removeStatuses);
+    }
+    if (changes.addArtifactTypes?.length) {
+      result.added_artifact_types = addNamespaceArtifactTypes(config, namespace, changes.addArtifactTypes);
+    }
+    if (changes.removeArtifactTypes?.length) {
+      result.removed_artifact_types = removeNamespaceArtifactTypes(config, namespace, changes.removeArtifactTypes);
+    }
+
+    writeConfig(this.dataPath, config);
+
+    const schema = resolveSchema(config, namespace);
+    return { changes: result, schema };
   }
 }
