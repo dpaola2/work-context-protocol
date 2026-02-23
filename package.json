@@ -3,8 +3,7 @@
   "license": "MIT",
   "workspaces": ["packages/shared", "packages/mcp"],
   "scripts": {
-    "build": "tsc -b",
-    "migrate": "node packages/mcp/dist/migrate.js"
+    "build": "tsc -b"
   },
   "devDependencies": {
     "typescript": "^5.9.0"

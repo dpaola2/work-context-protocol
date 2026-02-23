@@ -182,34 +182,6 @@ This project is tracked in WCP namespace `YOUR_NS`.
 
 Replace `YOUR_NS` with your namespace key (e.g., `PROJ`). Claude Code reads `CLAUDE.md` at session start, so the agent will always know which namespace to use. This works identically with the filesystem adapter and [WCP Cloud](https://workcontextprotocol.io).
 
-## Migrate to WCP Cloud
-
-If you're currently using the local filesystem adapter and want to switch to [WCP Cloud](https://workcontextprotocol.io) (hosted, no local server needed), you can migrate all your data:
-
-1. Sign up at [workcontextprotocol.io](https://workcontextprotocol.io) and get your bearer token
-2. Run the migration:
-
-```bash
-cd ~/projects/wcp
-npm run build
-npm run migrate -- --url https://workcontextprotocol.io/mcp --token <YOUR_TOKEN>
-```
-
-This reads your local data directory and pushes everything — namespaces, work items, comments, artifacts, and approval verdicts — to WCP Cloud. Original timestamps and callsigns are preserved.
-
-**Options:**
-- `--data-path <path>` — path to your WCP data directory (default: `$WCP_DATA_PATH` or `~/projects/wcp-data`)
-- `--dry-run` — parse and report what would be migrated without making any API calls
-
-The migration is idempotent — if a namespace or item already exists in the cloud, it's skipped.
-
-3. Once verified, swap your MCP config from the local server to the cloud:
-
-```bash
-claude mcp remove wcp
-claude mcp add --transport http wcp https://workcontextprotocol.io/mcp
-```
-
 ## Architecture
 
 WCP is organized as an npm workspaces monorepo:
