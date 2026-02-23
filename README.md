@@ -205,6 +205,34 @@ You can also use the seed script to create a starter directory:
 WCP_DATA_PATH=~/projects/wcp-data npm run seed
 ```
 
+## Migrate to WCP Cloud
+
+If you're currently using the local filesystem adapter and want to switch to [WCP Cloud](https://workcontextprotocol.io) (hosted, no local server needed), you can migrate all your data:
+
+1. Sign up at [workcontextprotocol.io](https://workcontextprotocol.io) and get your bearer token
+2. Run the migration:
+
+```bash
+cd ~/projects/wcp
+npm run build
+npm run migrate -- --url https://workcontextprotocol.io/mcp --token <YOUR_TOKEN>
+```
+
+This reads your local data directory and pushes everything — namespaces, work items, comments, artifacts, and approval verdicts — to WCP Cloud. Original timestamps and callsigns are preserved.
+
+**Options:**
+- `--data-path <path>` — path to your WCP data directory (default: `$WCP_DATA_PATH` or `~/projects/wcp-data`)
+- `--dry-run` — parse and report what would be migrated without making any API calls
+
+The migration is idempotent — if a namespace or item already exists in the cloud, it's skipped.
+
+3. Once verified, swap your MCP config from the local server to the cloud:
+
+```bash
+claude mcp remove wcp
+claude mcp add --transport http wcp https://workcontextprotocol.io/mcp
+```
+
 ## Architecture
 
 WCP separates protocol from storage via an adapter pattern:
