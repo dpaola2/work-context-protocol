@@ -2,6 +2,21 @@
 
 All notable changes to WCP are documented here.
 
+## [0.4.0] — 2026-02-24
+
+### Added
+
+- **Filesystem-to-cloud migration script** — `npx wcp-migrate` migrates all namespaces, work items, artifacts, and activity logs from the local filesystem adapter to [WCP Cloud](https://workcontextprotocol.io). Supports `--dry-run`, `--namespace` filtering, and handles rate limiting with automatic retries. (WCPC-10)
+- **Auto-create setup work item** — When the first namespace is created, WCP now auto-creates a "Set up WCP in your project" work item with instructions for adding WCP to the project's `CLAUDE.md`.
+
+### Fixed
+
+- **Auto-create config on first run** — The MCP server no longer crashes when the data directory or `config.yaml` doesn't exist. On first run, it auto-creates both with sensible defaults (`{ namespaces: {} }`), so the user's first interaction is `wcp_create_namespace` instead of debugging a missing file error. (WCPC-32)
+
+### Changed
+
+- README updated with Claude Cowork compatibility note, "Connect a project to a namespace" section, and `--scope user` for WCP Cloud install command
+
 ## [0.3.0] — 2026-02-23
 
 ### Breaking Changes

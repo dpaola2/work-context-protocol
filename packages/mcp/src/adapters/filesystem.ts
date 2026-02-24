@@ -3,6 +3,7 @@ import * as path from "path";
 import matter from "gray-matter";
 import type {
   WcpAdapter,
+  WcpConfig,
   Namespace,
   ItemSummary,
   WorkItem,
@@ -40,19 +41,18 @@ import { parseWorkItem, serializeWorkItem } from "../parser.js";
 
 export class FilesystemAdapter implements WcpAdapter {
   constructor(private dataPath: string) {
-    // Validate data path and config exist
+    // Auto-create data directory and config on first run
     if (!fs.existsSync(dataPath)) {
-      throw new Error(
-        `WCP data directory not found: ${dataPath}\n` +
-          `Create it and add .wcp/config.yaml to get started.`,
-      );
+      fs.mkdirSync(dataPath, { recursive: true });
     }
-    const configPath = path.join(dataPath, ".wcp", "config.yaml");
+    const wcpDir = path.join(dataPath, ".wcp");
+    const configPath = path.join(wcpDir, "config.yaml");
     if (!fs.existsSync(configPath)) {
-      throw new Error(
-        `WCP config not found: ${configPath}\n` +
-          `Create .wcp/config.yaml with namespace definitions.`,
-      );
+      if (!fs.existsSync(wcpDir)) {
+        fs.mkdirSync(wcpDir, { recursive: true });
+      }
+      const defaultConfig: WcpConfig = { namespaces: {} };
+      writeConfig(dataPath, defaultConfig);
     }
   }
 
