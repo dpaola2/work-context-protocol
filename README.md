@@ -49,6 +49,8 @@ claude mcp add wcp --scope user \
   -- node ~/projects/wcp/packages/mcp/dist/index.js
 ```
 
+> **Note:** The `--` (double dash, then a space) is important! It separates Claude CLI options from the command to run. `-- node` means "run `node` with the following arguments." Don't combine them into `--node` — that's not a valid flag.
+
 Or add to your project's `.mcp.json`:
 
 ```json
