@@ -1,6 +1,6 @@
 {
   "name": "@wcp/mcp",
-  "version": "1.0.0",
+  "version": "0.4.0",
   "description": "WCP MCP server — exposes work item tracking tools over MCP",
   "type": "module",
   "main": "dist/index.js",
