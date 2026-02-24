@@ -74,7 +74,11 @@ Use wcp_schema for the authoritative list. Defaults:
 - **type**: feature, bug, chore, spike (fixed)
 - **artifact types**: adr, plan (extensible per namespace via wcp_schema_update)
 
-Artifact types are intentionally minimal. Use wcp_schema_update to add domain-specific types (e.g., "prd", "architecture", "discovery") per namespace.`,
+Artifact types are intentionally minimal. Use wcp_schema_update to add domain-specific types (e.g., "prd", "architecture", "discovery") per namespace.
+
+## Getting Started
+
+When a new namespace is created, WCP automatically creates a setup work item with instructions for adding WCP to the project's CLAUDE.md. This ensures Claude loads work context at the start of every session. Check for this item and help the user complete it.`,
   },
 );
 
@@ -107,7 +111,47 @@ server.tool(
   },
   async ({ key, name, description }) => {
     try {
+      // Check if this is the user's first namespace
+      const existingNamespaces = await adapter.listNamespaces();
+      const isFirstNamespace = existingNamespaces.length === 0;
+
       const namespace = await adapter.createNamespace(key, name, description);
+
+      // Only create setup item for the very first namespace
+      if (!isFirstNamespace) {
+        return jsonResponse({ created: true, namespace });
+      }
+
+      const setupBody = [
+        `## Add WCP to your project's CLAUDE.md`,
+        ``,
+        `WCP works best when Claude automatically loads work context at the start of each session. Add these instructions to your project's \`CLAUDE.md\`:`,
+        ``,
+        "```markdown",
+        `## Work Tracking`,
+        ``,
+        `This project uses WCP for work tracking (namespace: \`${key}\`).`,
+        ``,
+        `At the start of sessions, check \`wcp_list\` for active items. Use \`wcp_comment\` to log progress and \`wcp_update\` to change status as work progresses.`,
+        "```",
+        ``,
+        `## Why this matters`,
+        ``,
+        `Without CLAUDE.md instructions, Claude won't know to check WCP unless you explicitly ask. With them, every session starts with full context — what's in progress, what's blocked, and what was decided in previous sessions.`,
+        ``,
+        `## When you're done`,
+        ``,
+        `Mark this item \`done\` once you've added the instructions to your project's CLAUDE.md.`,
+      ].join("\n");
+
+      await adapter.createItem(key, {
+        title: "Set up WCP in your project",
+        status: "todo",
+        priority: "high",
+        type: "chore",
+        body: setupBody,
+      });
+
       return jsonResponse({ created: true, namespace });
     } catch (err) {
       if (err instanceof WcpError) return errorResponse(err);
