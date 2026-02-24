@@ -1,10 +1,12 @@
 # WCP — Work Context Protocol
 
-A structured way for AI agents and humans to track work. Open protocol with 12 MCP tools. Organize tasks into namespaces, attach documents, log activity, and query everything through MCP.
+A structured way for AI agents and humans to track work. Open protocol with 12 MCP tools. Works with Claude Code, Claude Cowork, and any MCP-compatible client. Organize tasks into namespaces, attach documents, log activity, and query everything through MCP.
 
 ## Why WCP?
 
 AI agents need persistent context across sessions. They need to know what's been done, what's in progress, and what's next — not just for one conversation, but across an entire project. WCP gives agents (and humans) a shared workspace for tracking all of that: tasks, status, comments, attached documents, and history.
+
+WCP works anywhere MCP does — Claude Code for developers, Claude Cowork for everyone else, or any other MCP-compatible client.
 
 **Without WCP:** Every agent session starts from scratch. Context lives in chat logs, scattered notes, or your head.
 
@@ -18,7 +20,7 @@ The fastest way to get started. Hosted, managed, just works.
 claude mcp add --transport http --scope user wcp https://workcontextprotocol.io/mcp
 ```
 
-That's it. One line. Your agent now has full access to all 12 WCP tools. Visit [workcontextprotocol.io](https://workcontextprotocol.io) to learn more.
+That's it. One line. Your agent now has full access to all 12 WCP tools. Works with Claude Code, and as a custom connector in Claude Cowork. Visit [workcontextprotocol.io](https://workcontextprotocol.io) to learn more.
 
 ## Self-hosted filesystem mode
 
@@ -39,7 +41,7 @@ npx tsc -b
 mkdir -p ~/projects/wcp-data/.wcp
 ```
 
-### Add WCP to Claude Code
+### Add WCP to Claude Code / Claude Cowork
 
 ```bash
 claude mcp add wcp --scope user \
@@ -222,7 +224,7 @@ WCP is organized as an npm workspaces monorepo:
 The adapter pattern separates protocol from storage:
 
 ```
-Claude Code / any MCP client
+Claude Code / Claude Cowork / any MCP client
   └── MCP Server (packages/mcp/src/index.ts)
         └── 12 Tool Handlers
               └── WcpAdapter interface (packages/shared/src/types.ts)
