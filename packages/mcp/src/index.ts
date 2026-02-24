@@ -111,9 +111,17 @@ server.tool(
   },
   async ({ key, name, description }) => {
     try {
+      // Check if this is the user's first namespace
+      const existingNamespaces = await adapter.listNamespaces();
+      const isFirstNamespace = existingNamespaces.length === 0;
+
       const namespace = await adapter.createNamespace(key, name, description);
 
-      // Auto-create a getting-started work item in the new namespace
+      // Only create setup item for the very first namespace
+      if (!isFirstNamespace) {
+        return jsonResponse({ created: true, namespace });
+      }
+
       const setupBody = [
         `## Add WCP to your project's CLAUDE.md`,
         ``,
