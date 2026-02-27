@@ -1,6 +1,6 @@
 # WCP — Work Context Protocol
 
-A structured way for AI agents and humans to track work. Open protocol with 12 MCP tools. Works with Claude Code, Claude Cowork, and any MCP-compatible client. Organize tasks into namespaces, attach documents, log activity, and query everything through MCP.
+A structured way for AI agents and humans to track work. Open protocol with 17 MCP tools. Works with Claude Code, Claude Cowork, and any MCP-compatible client. Organize tasks into namespaces, attach documents, store knowledge as documents, log activity, and query everything through MCP.
 
 ## Why WCP?
 
@@ -20,7 +20,7 @@ The fastest way to get started. Hosted, managed, just works.
 claude mcp add --transport http --scope user wcp https://workcontextprotocol.io/mcp
 ```
 
-That's it. One line. Your agent now has full access to all 12 WCP tools. Works with Claude Code, and as a custom connector in Claude Cowork. Visit [workcontextprotocol.io](https://workcontextprotocol.io) to learn more.
+That's it. One line. Your agent now has full access to all 17 WCP tools. Works with Claude Code, and as a custom connector in Claude Cowork. Visit [workcontextprotocol.io](https://workcontextprotocol.io) to learn more.
 
 ## Self-hosted filesystem mode
 
@@ -82,6 +82,7 @@ AI agents interact with WCP through 12 MCP tools. They can list what needs doing
 | **Namespace** | A project or area of focus | `PROJ` (My Project), `OPS` (Operations) |
 | **Work item** | A task, feature, bug, or spike | `PROJ-12` |
 | **Callsign** | A unique ID: `{NAMESPACE}-{NUMBER}`. Auto-generated. | `PROJ-12`, `OPS-3`, `WCP-7` |
+| **Document** | Standalone prose knowledge in a namespace | Architecture decisions, meeting notes, patterns |
 | **Status** | Where the item is. No enforced transitions. | `backlog`, `todo`, `in_progress`, `in_review`, `done`, `cancelled` |
 | **Activity log** | Append-only history on each item | Comments from agents and humans with timestamps |
 | **Artifact** | A document attached to a work item | PRDs, architecture docs, plans, ADRs |
@@ -122,6 +123,25 @@ Started sketching the schema.
 All 12 tools built. 84/84 tests passing.
 ```
 
+### What a document looks like
+
+Documents are standalone prose files stored in a `_docs/` subdirectory within each namespace. They're identified by `NS/slug` references (e.g., `PROJ/roadmap`) and can optionally link to a work item via a `parent` field.
+
+```markdown
+---
+title: Architecture Overview
+slug: architecture
+type: adr
+parent: PROJ-5
+created: 2026-02-27
+updated: 2026-02-27
+---
+
+This document describes the system architecture...
+```
+
+Documents vs. artifacts: **Artifacts** are attached to a specific work item (like a PRD for a feature). **Documents** are standalone knowledge that may outlive any single work item — architecture decisions, team conventions, onboarding guides.
+
 ### Schema
 
 Statuses and artifact types are **extensible** per namespace. Priority and type are fixed.
@@ -137,7 +157,7 @@ Use `wcp_schema` to discover valid values at runtime. Use `wcp_schema_update` to
 
 ## MCP tools
 
-WCP exposes 12 tools via the Model Context Protocol:
+WCP exposes 17 tools via the Model Context Protocol:
 
 | Tool | Action | Key parameters |
 |------|--------|---------------|
@@ -153,18 +173,24 @@ WCP exposes 12 tools via the Model Context Protocol:
 | `wcp_approve` | Record approval on an artifact | `id`, `artifact` (filename), `verdict` (all required) |
 | `wcp_schema` | Discover valid field values | `namespace` (optional) |
 | `wcp_schema_update` | Extend statuses/artifact types | `namespace` (required), `add_statuses`, `remove_statuses`, `add_artifact_types`, `remove_artifact_types` |
+| `wcp_doc_create` | Create a standalone document | `namespace`, `title` (required), `body`, `slug`, `type`, `parent` |
+| `wcp_doc_get` | Read a document | `ref` (NS/slug format, e.g. `PROJ/roadmap`) |
+| `wcp_doc_list` | List documents in a namespace | `namespace` (required), `parent` (optional filter) |
+| `wcp_doc_update` | Update document title/body | `ref` (required), `title`, `body` |
+| `wcp_doc_rename` | Rename a document's slug | `ref`, `new_slug` (both required) |
 
 The MCP server includes instructions that are sent to agents during the handshake, so they understand how to use the tools without additional prompting.
 
 ## Testing
 
-189 automated tests across 4 suites:
+230 automated tests across 5 suites:
 
 ```bash
-npx tsx packages/mcp/src/smoke-test.ts              # 84 tests
+npx tsx packages/mcp/src/smoke-test.ts              # 88 tests
 npx tsx packages/mcp/src/status-transition-test.ts   # 26 tests
 npx tsx packages/mcp/src/approve-test.ts             # 35 tests
 npx tsx packages/mcp/src/adapter-expansion-test.ts   # 44 tests
+npx tsx packages/mcp/src/doc-test.ts                 # 41 tests
 ```
 
 ## Connect a project to a namespace
@@ -228,7 +254,7 @@ The adapter pattern separates protocol from storage:
 ```
 Claude Code / Claude Cowork / any MCP client
   └── MCP Server (packages/mcp/src/index.ts)
-        └── 12 Tool Handlers
+        └── 17 Tool Handlers
               └── WcpAdapter interface (packages/shared/src/types.ts)
                     └── FilesystemAdapter → markdown files
 ```

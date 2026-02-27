@@ -43,9 +43,10 @@ WCP is a work item tracker for AI agents and humans. It stores structured work i
 
 ## Core Concepts
 
-- **Namespaces** organize work by domain (e.g., PROJ for a project, OPS for operations). Each namespace has a directory of work items.
+- **Namespaces** organize work by domain (e.g., PROJ for a project, OPS for operations). Each namespace contains work items and documents.
 - **Work items** are identified by callsigns like PROJ-12 or OPS-3. Each has: frontmatter (structured fields), a markdown body (description/specs), and an activity log (append-only comments).
-- **Artifacts** are documents attached to work items (PRDs, architecture proposals, gameplans, etc.). Stored in a companion directory alongside the work item.
+- **Documents** store prose knowledge (architecture decisions, meeting notes, patterns, profiles). Identified by NS/slug references like PROJ/roadmap. Optionally linked to a work item via parent callsign.
+- **Artifacts** are documents attached to work items (PRDs, architecture proposals, gameplans, etc.). Created via wcp_attach, readable via wcp_get_artifact.
 
 ## Workflow
 
@@ -57,6 +58,11 @@ WCP is a work item tracker for AI agents and humans. It stores structured work i
 6. **Log progress**: Call wcp_comment to append to the activity log with your author name and a message.
 7. **Attach documents**: Call wcp_attach to store artifact files (PRDs, specs, proposals) on a work item. These are stored in a companion directory.
 8. **Read documents**: Call wcp_get_artifact to retrieve the content of an attached artifact.
+9. **Create knowledge**: Call wcp_doc_create to store prose knowledge (architecture decisions, meeting notes, patterns). Optionally link to a work item with the parent param.
+10. **Read knowledge**: Call wcp_doc_get with a NS/slug reference (e.g. 'PROJ/roadmap') to retrieve a document.
+11. **Update knowledge**: Call wcp_doc_update to replace a document's body and/or title.
+12. **List knowledge**: Call wcp_doc_list to see documents in a namespace. Filter by parent work item.
+13. **Rename knowledge**: Call wcp_doc_rename to change a document's slug.
 
 ## Schema Discovery
 
@@ -410,6 +416,106 @@ server.tool(
         removeArtifactTypes: remove_artifact_types,
       });
       return jsonResponse({ updated: true, changes: result.changes, schema: result.schema });
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
+// --- wcp_doc_create ---
+server.tool(
+  "wcp_doc_create",
+  "Create a document in a namespace. Documents store prose knowledge (architecture decisions, meeting notes, patterns, profiles). Returns the created document with its NS/slug reference.",
+  {
+    namespace: z.string().describe("Namespace key, e.g. 'PROJ'"),
+    title: z.string().describe("Document title"),
+    body: z.string().optional().describe("Document body (markdown)"),
+    slug: z.string().optional().describe("Custom slug (optional). Auto-generated from title if omitted."),
+    type: z.string().optional().describe("Document type (optional). Freeform string, e.g. 'prd', 'adr', 'meeting-notes'."),
+    parent: z.string().optional().describe("Parent work item callsign (optional). Links document to a work item."),
+  },
+  async ({ namespace, ...input }) => {
+    try {
+      const doc = await adapter.createDocument(namespace, input);
+      return jsonResponse({ created: true, ref: `${namespace}/${doc.slug}`, document: doc });
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
+// --- wcp_doc_get ---
+server.tool(
+  "wcp_doc_get",
+  "Get a document by reference (NS/slug format, e.g. 'PROJ/roadmap'). Returns the full document including body.",
+  {
+    ref: z.string().describe("Document reference in NS/slug format, e.g. 'PROJ/roadmap'"),
+  },
+  async ({ ref }) => {
+    try {
+      const doc = await adapter.getDocument(ref);
+      return jsonResponse({ document: doc });
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
+// --- wcp_doc_list ---
+server.tool(
+  "wcp_doc_list",
+  "List documents in a namespace. Optionally filter by parent work item callsign.",
+  {
+    namespace: z.string().describe("Namespace key, e.g. 'PROJ'"),
+    parent: z.string().optional().describe("Filter by parent work item callsign (optional)"),
+  },
+  async ({ namespace, parent }) => {
+    try {
+      const docs = await adapter.listDocuments(namespace, parent ? { parent } : undefined);
+      return jsonResponse({ documents: docs, count: docs.length });
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
+// --- wcp_doc_update ---
+server.tool(
+  "wcp_doc_update",
+  "Update a document's body and/or title. Cannot change slug — use wcp_doc_rename for that.",
+  {
+    ref: z.string().describe("Document reference in NS/slug format, e.g. 'PROJ/roadmap'"),
+    title: z.string().optional().describe("New title (optional)"),
+    body: z.string().optional().describe("New body (replaces existing, optional)"),
+  },
+  async ({ ref, ...changes }) => {
+    try {
+      await adapter.updateDocument(ref, changes);
+      return jsonResponse({ updated: true });
+    } catch (err) {
+      if (err instanceof WcpError) return errorResponse(err);
+      throw err;
+    }
+  },
+);
+
+// --- wcp_doc_rename ---
+server.tool(
+  "wcp_doc_rename",
+  "Rename a document's slug. The old reference will no longer resolve. Use this intentionally — it changes the document's permanent identifier.",
+  {
+    ref: z.string().describe("Current document reference in NS/slug format"),
+    new_slug: z.string().describe("New slug (lowercase alphanumeric with hyphens)"),
+  },
+  async ({ ref, new_slug }) => {
+    try {
+      await adapter.renameDocument(ref, new_slug);
+      const namespace = ref.split("/")[0];
+      return jsonResponse({ renamed: true, new_ref: `${namespace}/${new_slug}` });
     } catch (err) {
       if (err instanceof WcpError) return errorResponse(err);
       throw err;

@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-WCP (Work Context Protocol) is an MCP server that provides structured work item tracking via markdown files with YAML frontmatter. It exposes 12 tools over MCP for creating, reading, updating, and organizing work items by namespace.
+WCP (Work Context Protocol) is an MCP server that provides structured work item tracking and document storage via markdown files with YAML frontmatter. It exposes 17 tools over MCP for creating, reading, updating, and organizing work items and documents by namespace.
 
 **Runtime:** Node.js + TypeScript (ES2022, Node16 module resolution)
 **Transport:** MCP stdio
@@ -30,15 +30,15 @@ Build order is enforced by `tsconfig.json` project references (`tsc -b` builds s
 | `packages/shared/src/validation.ts` | Field validators — `validateStatus()`, `validatePriority()`, `validateType()`, `validateArtifactType()`, `validateVerdict()` |
 | `packages/shared/src/schema.ts` | `resolveSchema()` — merges global defaults with namespace extensions. Schema mutation functions |
 | `packages/shared/src/utils.ts` | `parseCallsign()`, `today()` (date-only), `now()` (ISO 8601 with ms) |
-| `packages/mcp/src/adapters/filesystem.ts` | All I/O logic — the only `WcpAdapter` implementation. All 12 adapter methods |
-| `packages/mcp/src/index.ts` | MCP server setup — tool handlers, each a thin pass-through to the adapter |
+| `packages/mcp/src/adapters/filesystem.ts` | All I/O logic — the only `WcpAdapter` implementation. All 17 adapter methods |
+| `packages/mcp/src/index.ts` | MCP server setup — 17 tool handlers, each a thin pass-through to the adapter |
 | `packages/mcp/src/parser.ts` | `parseWorkItem()` / `serializeWorkItem()` — markdown ↔ frontmatter/body/activity round-trip |
 | `packages/mcp/src/config.ts` | `readConfig()` / `writeConfig()` for `.wcp/config.yaml` |
 | `packages/mcp/src/seed.ts` | Data seeding script |
 
 ### Design Principles
 
-- **Work-item-centric:** Every piece of data belongs to a work item (frontmatter, body, activity log, or artifact)
+- **Work-item-centric:** Most data belongs to a work item (frontmatter, body, activity log, or artifact). Documents are a parallel primitive for standalone prose knowledge.
 - **Compose on existing primitives:** New use cases should be satisfied by composing readers over existing data — not adding new tools or fields
 - **Adapter pattern:** `WcpAdapter` interface defines the contract. `FilesystemAdapter` is the implementation. The interface exists so other tools (like WCP Cloud) can implement the same protocol
 - **Activity log is append-only:** Timestamped, human/agent-readable. The right primitive for state transitions
@@ -147,6 +147,7 @@ if (changes.status) validateStatus(changes.status, resolved.status.all);
 | `packages/mcp/src/status-transition-test.ts` | Status transition auto-log tests (WCP-9) |
 | `packages/mcp/src/approve-test.ts` | Approval tool tests (WCP-11) |
 | `packages/mcp/src/adapter-expansion-test.ts` | Adapter expansion tests (WCP-19 M1) |
+| `packages/mcp/src/doc-test.ts` | Document primitive tests (WCP-39) |
 | `packages/*/dist/` | Compiled JavaScript output per package |
 
 ### Test Conventions

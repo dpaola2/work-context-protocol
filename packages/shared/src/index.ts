@@ -20,6 +20,11 @@ export type {
   SchemaUpdateInput,
   SchemaUpdateResult,
   WcpAdapter,
+  Document,
+  DocumentSummary,
+  CreateDocumentInput,
+  UpdateDocumentInput,
+  DocumentFilters,
 } from "./types.js";
 
 export { DEFAULT_SCHEMA } from "./types.js";
@@ -53,6 +58,8 @@ export {
 // Utils
 export {
   parseCallsign,
+  parseDocRef,
+  slugify,
   today,
   now,
 } from "./utils.js";

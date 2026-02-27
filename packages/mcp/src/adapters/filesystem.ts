@@ -17,6 +17,11 @@ import type {
   ResolvedSchema,
   SchemaUpdateInput,
   SchemaUpdateResult,
+  Document,
+  DocumentSummary,
+  CreateDocumentInput,
+  UpdateDocumentInput,
+  DocumentFilters,
 } from "@wcp/shared";
 import {
   NotFoundError,
@@ -33,6 +38,8 @@ import {
   validateArtifactType,
   validateVerdict,
   parseCallsign,
+  parseDocRef,
+  slugify,
   today,
   now,
 } from "@wcp/shared";
@@ -67,11 +74,17 @@ export class FilesystemAdapter implements WcpAdapter {
         const files = fs.readdirSync(nsDir).filter((f) => f.endsWith(".md"));
         itemCount = files.length;
       }
+      const docsDir = path.join(this.dataPath, key, "_docs");
+      let docCount = 0;
+      if (fs.existsSync(docsDir)) {
+        docCount = fs.readdirSync(docsDir).filter((f) => f.endsWith(".md")).length;
+      }
       namespaces.push({
         key,
         name: ns.name,
         description: ns.description,
         itemCount,
+        docCount,
       });
     }
 
@@ -551,7 +564,7 @@ export class FilesystemAdapter implements WcpAdapter {
     config.namespaces[key] = { name, description, next: 1 };
     writeConfig(this.dataPath, config);
 
-    return { key, name, description, itemCount: 0 };
+    return { key, name, description, itemCount: 0, docCount: 0 };
   }
 
   async getSchema(namespace?: string): Promise<ResolvedSchema> {
@@ -587,5 +600,185 @@ export class FilesystemAdapter implements WcpAdapter {
 
     const schema = resolveSchema(config, namespace);
     return { changes: result, schema };
+  }
+
+  // --- Document methods ---
+
+  async createDocument(namespace: string, input: CreateDocumentInput): Promise<Document> {
+    const config = readConfig(this.dataPath);
+    if (!config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+
+    const slug = input.slug || slugify(input.title);
+    if (!slug || !/^[a-z0-9][a-z0-9-]*$/.test(slug)) {
+      throw new ValidationError(
+        "slug",
+        `'${slug}' is not a valid slug. Must be lowercase alphanumeric with hyphens, starting with a letter or number.`,
+      );
+    }
+
+    const docsDir = path.join(this.dataPath, namespace, "_docs");
+    if (!fs.existsSync(docsDir)) {
+      fs.mkdirSync(docsDir, { recursive: true });
+    }
+
+    const filePath = path.join(docsDir, `${slug}.md`);
+    if (fs.existsSync(filePath)) {
+      throw new ValidationError("slug", `Document '${namespace}/${slug}' already exists.`);
+    }
+
+    const todayStr = today();
+    const frontmatter: Record<string, any> = {
+      title: input.title,
+      slug,
+      created: todayStr,
+      updated: todayStr,
+    };
+    if (input.type) frontmatter.type = input.type;
+    if (input.parent) frontmatter.parent = input.parent;
+
+    const body = input.body || "";
+    const content = matter.stringify(body ? `\n${body}\n` : "", frontmatter);
+    fs.writeFileSync(filePath, content, "utf-8");
+
+    return {
+      slug,
+      title: input.title,
+      type: input.type,
+      parent: input.parent,
+      created: todayStr,
+      updated: todayStr,
+      body,
+    };
+  }
+
+  async getDocument(ref: string): Promise<Document> {
+    const { namespace, slug } = parseDocRef(ref);
+    const config = readConfig(this.dataPath);
+    if (!config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+
+    const filePath = path.join(this.dataPath, namespace, "_docs", `${slug}.md`);
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundError(`Document '${ref}'`);
+    }
+
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const { data, content } = matter(raw);
+
+    return {
+      slug: data.slug || slug,
+      title: data.title || "(untitled)",
+      type: data.type,
+      parent: data.parent,
+      created: String(data.created || ""),
+      updated: String(data.updated || ""),
+      body: content.trim(),
+    };
+  }
+
+  async listDocuments(namespace: string, filters?: DocumentFilters): Promise<DocumentSummary[]> {
+    const config = readConfig(this.dataPath);
+    if (!config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+
+    const docsDir = path.join(this.dataPath, namespace, "_docs");
+    if (!fs.existsSync(docsDir)) {
+      return [];
+    }
+
+    const files = fs.readdirSync(docsDir).filter((f) => f.endsWith(".md"));
+    const docs: DocumentSummary[] = [];
+
+    for (const file of files) {
+      const filePath = path.join(docsDir, file);
+      const raw = fs.readFileSync(filePath, "utf-8");
+
+      try {
+        const { data } = matter(raw);
+        const summary: DocumentSummary = {
+          slug: data.slug || file.replace(/\.md$/, ""),
+          title: data.title || "(untitled)",
+          type: data.type,
+          parent: data.parent,
+          created: String(data.created || ""),
+          updated: String(data.updated || ""),
+        };
+
+        if (filters?.parent && summary.parent !== filters.parent) continue;
+
+        docs.push(summary);
+      } catch {
+        continue;
+      }
+    }
+
+    docs.sort(
+      (a, b) => new Date(b.updated).getTime() - new Date(a.updated).getTime(),
+    );
+
+    return docs;
+  }
+
+  async updateDocument(ref: string, changes: UpdateDocumentInput): Promise<void> {
+    const { namespace, slug } = parseDocRef(ref);
+    const config = readConfig(this.dataPath);
+    if (!config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+
+    const filePath = path.join(this.dataPath, namespace, "_docs", `${slug}.md`);
+    if (!fs.existsSync(filePath)) {
+      throw new NotFoundError(`Document '${ref}'`);
+    }
+
+    const raw = fs.readFileSync(filePath, "utf-8");
+    const { data, content } = matter(raw);
+
+    if (changes.title !== undefined) data.title = changes.title;
+    data.updated = today();
+
+    const body = changes.body !== undefined ? changes.body : content.trim();
+    const newContent = matter.stringify(body ? `\n${body}\n` : "", data);
+    fs.writeFileSync(filePath, newContent, "utf-8");
+  }
+
+  async renameDocument(ref: string, newSlug: string): Promise<void> {
+    if (!newSlug || !/^[a-z0-9][a-z0-9-]*$/.test(newSlug)) {
+      throw new ValidationError(
+        "slug",
+        `'${newSlug}' is not a valid slug. Must be lowercase alphanumeric with hyphens.`,
+      );
+    }
+
+    const { namespace, slug } = parseDocRef(ref);
+    const config = readConfig(this.dataPath);
+    if (!config.namespaces[namespace]) {
+      throw new NamespaceNotFoundError(namespace);
+    }
+
+    const docsDir = path.join(this.dataPath, namespace, "_docs");
+    const oldPath = path.join(docsDir, `${slug}.md`);
+    if (!fs.existsSync(oldPath)) {
+      throw new NotFoundError(`Document '${ref}'`);
+    }
+
+    const newPath = path.join(docsDir, `${newSlug}.md`);
+    if (fs.existsSync(newPath)) {
+      throw new ValidationError("slug", `Document '${namespace}/${newSlug}' already exists.`);
+    }
+
+    // Update slug in frontmatter
+    const raw = fs.readFileSync(oldPath, "utf-8");
+    const { data, content } = matter(raw);
+    data.slug = newSlug;
+    data.updated = today();
+
+    const newContent = matter.stringify(content, data);
+    fs.writeFileSync(newPath, newContent, "utf-8");
+    fs.unlinkSync(oldPath);
   }
 }

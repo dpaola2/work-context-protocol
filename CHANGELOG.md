@@ -2,6 +2,16 @@
 
 All notable changes to WCP are documented here.
 
+## [0.5.0] — 2026-02-27
+
+### Added
+
+- **Document primitive** — 5 new MCP tools (`wcp_doc_create`, `wcp_doc_get`, `wcp_doc_list`, `wcp_doc_update`, `wcp_doc_rename`) for storing standalone prose knowledge (architecture decisions, meeting notes, patterns) as markdown files. Documents are identified by `NS/slug` references (e.g., `PROJ/roadmap`) and can optionally link to a work item via the `parent` field. Stored in `_docs/` subdirectory per namespace. (WCP-39)
+- **`WcpAdapter` expanded to 17 methods** — `createDocument()`, `getDocument()`, `listDocuments()`, `updateDocument()`, `renameDocument()` added to the adapter interface.
+- **`Namespace.docCount`** — `listNamespaces()` now returns a `docCount` field alongside `itemCount`.
+- **New utilities** — `slugify()` for auto-generating slugs from titles, `parseDocRef()` for validating `NS/slug` document references.
+- **41 new tests** in `doc-test.ts` covering CRUD, listing, filtering by parent, rename, slug auto-generation, and error cases.
+
 ## [0.4.0] — 2026-02-24
 
 ### Added

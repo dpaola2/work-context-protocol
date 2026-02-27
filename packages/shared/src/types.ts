@@ -67,6 +67,7 @@ export interface Namespace {
   name: string;
   description: string;
   itemCount: number;
+  docCount: number;
 }
 
 export interface Artifact {
@@ -145,6 +146,44 @@ export interface ApproveArtifactInput {
   verdict: string;
 }
 
+// --- Document types ---
+
+export interface Document {
+  slug: string;
+  title: string;
+  type?: string;
+  parent?: string;
+  created: string;
+  updated: string;
+  body: string;
+}
+
+export interface DocumentSummary {
+  slug: string;
+  title: string;
+  type?: string;
+  parent?: string;
+  created: string;
+  updated: string;
+}
+
+export interface CreateDocumentInput {
+  title: string;
+  slug?: string;
+  type?: string;
+  parent?: string;
+  body?: string;
+}
+
+export interface UpdateDocumentInput {
+  title?: string;
+  body?: string;
+}
+
+export interface DocumentFilters {
+  parent?: string;
+}
+
 // --- New types for adapter expansion ---
 
 export interface SchemaUpdateInput {
@@ -159,7 +198,7 @@ export interface SchemaUpdateResult {
   schema: ResolvedSchema;
 }
 
-// --- Adapter interface (expanded to 12 methods) ---
+// --- Adapter interface (expanded to 17 methods) ---
 
 export interface WcpAdapter {
   listNamespaces(): Promise<Namespace[]>;
@@ -175,4 +214,11 @@ export interface WcpAdapter {
   createNamespace(key: string, name: string, description: string): Promise<Namespace>;
   getSchema(namespace?: string): Promise<ResolvedSchema>;
   updateSchema(namespace: string, changes: SchemaUpdateInput): Promise<SchemaUpdateResult>;
+
+  // Document methods
+  createDocument(namespace: string, input: CreateDocumentInput): Promise<Document>;
+  getDocument(ref: string): Promise<Document>;
+  listDocuments(namespace: string, filters?: DocumentFilters): Promise<DocumentSummary[]>;
+  updateDocument(ref: string, changes: UpdateDocumentInput): Promise<void>;
+  renameDocument(ref: string, newSlug: string): Promise<void>;
 }
